@@ -74,7 +74,7 @@ export const fetchSettings = async (options, doRequest = request) => {
  * no public exposure. Anything not in the list is a 404: this is a proxy to
  * named files, never to the backend.
  */
-export const assetProxy = (assets) => (req, res) => {
+export const assetProxy = (assets, { timeout = 10000 } = {}) => (req, res) => {
   const key = (req.url || '').replace(/^\/+/, '').replace(/[?#].*$/, '')
   const target = assets[key]
   if (!target) {
@@ -83,9 +83,9 @@ export const assetProxy = (assets) => (req, res) => {
     return
   }
   const lib = target.startsWith('https:') ? https : http
-  lib
+  const upstreamRequest = lib
     // No keep-alive agent: a pooled socket would hold the process open.
-    .get(target, { agent: false }, (upstream) => {
+    .get(target, { agent: false, timeout }, (upstream) => {
       res.statusCode = upstream.statusCode
       if (upstream.headers['content-type']) {
         res.setHeader('Content-Type', upstream.headers['content-type'])
@@ -94,9 +94,16 @@ export const assetProxy = (assets) => (req, res) => {
       upstream.pipe(res)
     })
     .on('error', () => {
+      if (res.headersSent) {
+        res.destroy()
+        return
+      }
       res.statusCode = 502
       res.end('Bad gateway')
     })
+  // Node only emits the event. The request must be destroyed by hand, or a
+  // silent upstream would hold the response open forever.
+  upstreamRequest.on('timeout', () => upstreamRequest.destroy(new Error('upstream timeout')))
 }
 
 /**
@@ -112,10 +119,17 @@ export const collectAssets = (settings, baseUrl) => {
     if (group === 'system.site' || !group.endsWith('.settings')) continue
     for (const name of ['logo', 'favicon']) {
       const item = values[name]
-      if (item && item.url) {
-        assets[name] = item.url.startsWith('http') ? item.url : `${baseUrl}${item.url}`
-        item.url = `/_decoupled/${name}`
+      if (!item || !item.url) continue
+      // The proxy serves one theme: the first settings group, which is the
+      // same group applyToHead reads. A later group keeps a direct backend
+      // URL, so its data stays truthful instead of pointing at the wrong
+      // file.
+      if (assets[name]) {
+        item.url = item.url.startsWith('http') ? item.url : `${baseUrl}${item.url}`
+        continue
       }
+      assets[name] = item.url.startsWith('http') ? item.url : `${baseUrl}${item.url}`
+      item.url = `/_decoupled/${name}`
     }
   }
   return assets
@@ -145,6 +159,8 @@ export const applyToHead = (head = {}, attributes, baseUrl = '') => {
     }
     else {
       head.title = site.name
+      // A leftover template would keep branding every page with old text.
+      delete head.titleTemplate
     }
   }
   if (themeSettings.favicon && themeSettings.favicon.url) {

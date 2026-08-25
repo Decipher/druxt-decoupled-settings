@@ -1,3 +1,4 @@
+/* eslint-env jest */
 import DruxtDecoupledSettingsModule, { applyToHead, assetProxy, collectAssets, fetchSettings, getToken } from '../src'
 
 const attributes = {
@@ -23,6 +24,15 @@ describe('applyToHead', () => {
 
   test('uses the name alone when there is no slogan', () => {
     const head = applyToHead({}, {
+      consumer: null,
+      settings: { 'system.site': { name: 'Solo' } },
+    })
+    expect(head.title).toBe('Solo')
+    expect(head.titleTemplate).toBeUndefined()
+  })
+
+  test('clears a stale template when there is no slogan', () => {
+    const head = applyToHead({ titleTemplate: '%s | Old Brand' }, {
       consumer: null,
       settings: { 'system.site': { name: 'Solo' } },
     })
@@ -123,6 +133,17 @@ describe('collectAssets', () => {
     expect(settings['system.site']).toEqual({ name: 'kept alone' })
   })
 
+  test('gives the proxy to the first group only, like applyToHead', () => {
+    const settings = {
+      'olivero.settings': { favicon: { url: '/olivero.ico' } },
+      'claro.settings': { favicon: { url: '/claro.ico' } },
+    }
+    const assets = collectAssets(settings, 'https://backend.example.com')
+    expect(assets.favicon).toBe('https://backend.example.com/olivero.ico')
+    expect(settings['olivero.settings'].favicon.url).toBe('/_decoupled/favicon')
+    expect(settings['claro.settings'].favicon.url).toBe('https://backend.example.com/claro.ico')
+  })
+
   test('collects nothing without theme assets', () => {
     expect(collectAssets({ 'system.site': { name: 'x' } }, 'http://b')).toEqual({})
   })
@@ -169,6 +190,33 @@ describe('assetProxy', () => {
     expect(response.headers['content-type']).toBe('image/svg+xml')
     expect(response.headers['cache-control']).toContain('max-age')
     expect(response.body).toBe('<svg/>')
+  })
+
+  test('answers 502 when the backend accepts but never responds', async () => {
+    const httpModule = require('http')
+    const silent = httpModule.createServer(() => {})
+    await new Promise((resolve) => silent.listen(0, resolve))
+    const silentPort = silent.address().port
+
+    const front = httpModule.createServer(
+      assetProxy({ logo: `http://127.0.0.1:${silentPort}/logo.svg` }, { timeout: 100 })
+    )
+    await new Promise((resolve) => front.listen(0, resolve))
+    const frontPort = front.address().port
+
+    const response = await new Promise((resolve, reject) => {
+      httpModule.get(`http://127.0.0.1:${frontPort}/logo`, (res) => {
+        let body = ''
+        res.on('data', (chunk) => { body += chunk })
+        res.on('end', () => resolve({ statusCode: res.statusCode, body }))
+      }).on('error', reject)
+    })
+
+    expect(response.statusCode).toBe(502)
+    expect(response.body).toBe('Bad gateway')
+
+    front.close()
+    silent.close()
   })
 
   test('refuses everything not on the allowlist', () => {
