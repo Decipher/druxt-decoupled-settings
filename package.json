@@ -1,10 +1,16 @@
 {
   "name": "@druxt-contrib/decoupled-settings",
   "version": "0.1.0",
+  "description": "Bakes Drupal Decoupled Settings into the Nuxt build, per consumer.",
+  "license": "MIT",
   "keywords": [
     "druxt",
     "module"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/druxt-contrib/decoupled-settings"
+  },
   "exports": {
     ".": {
       "require": "./dist/index.ssr.js",
@@ -23,13 +29,14 @@
     "changeset": "changeset",
     "lint": "eslint --ext .js,.vue src",
     "test": "jest",
-    "test:watch": "jest --watch",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:watch": "jest --watch"
   },
   "devDependencies": {
     "@babel/core": "7.20.2",
     "@babel/preset-env": "7.20.2",
     "@changesets/cli": "2.25.2",
+    "@playwright/test": "^1.49.0",
     "@vue/test-utils": "1.3.3",
     "babel-core": "7.0.0-bridge.0",
     "druxt": "0.21.0",
@@ -39,15 +46,9 @@
     "jest": "27.5.1",
     "siroc": "0.16.0",
     "vue-jest": "3.0.7",
-    "vue-template-compiler": "2.7.14",
-    "@playwright/test": "^1.49.0"
+    "vue-template-compiler": "2.7.14"
   },
   "publishConfig": {
     "access": "public"
-  },
-  "description": "Bakes Drupal Decoupled Settings into the Nuxt build, per consumer.",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/druxt-contrib/decoupled-settings"
   }
 }
