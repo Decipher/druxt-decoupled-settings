@@ -33,10 +33,9 @@ test.describe('Decoupled Settings administration', () => {
     const href = await row.locator('a[href*="decoupled-settings"]').first().getAttribute('href')
     await page.goto(`${DRUPAL_URL}${href}`)
 
-    await expect(page.getByText('system.site:name')).toBeVisible()
-    // The partner's own override is ticked with its value.
-    const nameRow = page.locator('tr', { hasText: 'system.site:name' })
-    await expect(nameRow.getByRole('checkbox').first()).toBeChecked()
+    await expect(page.getByRole('cell', { name: 'system.site:name', exact: true })).toBeVisible()
+    // The partner's own override is ticked.
+    await expect(page.getByRole('checkbox', { name: 'Override system.site:name' })).toBeChecked()
 
     await page.screenshot({ path: shot('03-consumer-overrides'), fullPage: true })
   })
