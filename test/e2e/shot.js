@@ -16,17 +16,25 @@ const HIDE_FIXED_CHROME_CSS = `
   body { padding-top: 0 !important; }
 `
 
-const shoot = async (page, selector, path, { padding = 32 } = {}) => {
+const shoot = async (page, selector, path, { padding = 32, bottomSelector = '' } = {}) => {
   await page.addStyleTag({ content: HIDE_FIXED_CHROME_CSS })
   await page.evaluate(() => window.scrollTo(0, 0))
   const box = await page.locator(selector).first().boundingBox()
   if (!box) throw new Error(`Nothing to capture for ${selector}`)
 
+  // A wrapper region often carries trailing empty space; anchoring the
+  // bottom to the last meaningful element trims it away.
+  let bottom = box.y + box.height
+  if (bottomSelector) {
+    const last = await page.locator(bottomSelector).last().boundingBox()
+    if (last) bottom = last.y + last.height
+  }
+
   const clip = {
     x: Math.max(0, box.x - padding),
     y: Math.max(0, box.y - padding),
     width: box.width + padding * 2,
-    height: box.height + padding * 2,
+    height: bottom - Math.max(0, box.y - padding) + padding,
   }
   const viewport = page.viewportSize()
   await page.setViewportSize({

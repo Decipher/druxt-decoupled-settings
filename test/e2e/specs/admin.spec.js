@@ -20,7 +20,11 @@ test.describe('Decoupled Settings administration', () => {
     await page.getByPlaceholder('Filter by setting name or value').last().fill('system.site')
     await expect(page.getByRole('cell', { name: 'system.site', exact: true }).first()).toBeVisible()
 
-    await shoot(page, 'form.decoupled-settings-settings, #decoupled-settings-settings, main form', shot('01-exposure-form'))
+    // Cap the review at its first rows: the shape matters, not the census.
+    await page.addStyleTag({ content: '#decoupled-settings-review tbody tr:nth-child(n+8) { display: none; }' })
+
+    // The block-region wrapper, so the page title is in the shot.
+    await shoot(page, '.region-content, main', shot('01-exposure-form'), { bottomSelector: 'input[value="Save configuration"], button:has-text("Save configuration")' })
   })
 
   test('the consumer list counts each consumer\'s overrides', async ({ page }) => {
@@ -46,6 +50,11 @@ test.describe('Decoupled Settings administration', () => {
 
     await page.getByPlaceholder('Filter by setting name or value').fill('system.site')
 
-    await shoot(page, 'main form', shot('03-consumer-overrides'))
+    // A handful of rows tells the inherit-and-override story; the checked
+    // system.site:name override sits inside them.
+    await page.addStyleTag({ content: '#decoupled-settings-overrides tbody tr:nth-child(n+7) { display: none; }' })
+    await expect(page.getByRole('checkbox', { name: 'Override system.site:name' })).toBeVisible()
+
+    await shoot(page, '.region-content, main', shot('03-consumer-overrides'), { bottomSelector: 'input[value="Save overrides"], button:has-text("Save overrides")' })
   })
 })
