@@ -1,0 +1,65 @@
+# Self-contained CI for a druxt-contrib package, following the
+# nuxt/nuxt-cloudflared-tunnel convention on this instance: no shared
+# templates, node image, docker runner tag, and no duplicate pipelines when
+# a branch has an open merge request.
+#
+# The Playwright e2e suite is not run here: it needs a provisioned Drupal
+# backend and two built frontends. It runs against a live stack, and doubles
+# as the screenshot generator - see test/e2e/.
+stages:
+  - lint
+  - test
+
+default:
+  # Node 16 on purpose: the Nuxt 2 projects this module targets run on it.
+  image: node:16-bullseye
+  tags: [docker]
+  timeout: 15m
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - api_failure
+      - stuck_or_timeout_failure
+  before_script:
+    - npm ci --no-audit --no-fund
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+cache:
+  key:
+    files:
+      - package-lock.json
+  paths:
+    - .npm/
+
+variables:
+  npm_config_cache: "$CI_PROJECT_DIR/.npm"
+
+lint:
+  stage: lint
+  script:
+    - npm run lint
+
+test:
+  stage: test
+  script:
+    - npm test
+  coverage: '/All files[^|]*\|[^|]*\s+([\d.]+)/'
+  artifacts:
+    when: always
+    paths:
+      - coverage/
+
+build:
+  stage: test
+  script:
+    - npm run build
+  artifacts:
+    paths:
+      - dist/
