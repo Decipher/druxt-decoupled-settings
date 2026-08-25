@@ -1,0 +1,25 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`DruxtModuleComponent Hello world 1`] = `
+Object {
+  "$attrs": Object {
+    "foo": "bar",
+    "langcode": undefined,
+  },
+  "is": "DruxtWrapper",
+  "options": Array [
+    "DruxtModuleComponentBarDefault",
+    "DruxtModuleComponentBar",
+    "DruxtModuleComponentDefault",
+  ],
+  "props": Object {},
+  "propsData": Object {
+    "foo": "bar",
+    "langcode": undefined,
+  },
+  "settings": Object {},
+  "slots": Array [
+    "default",
+  ],
+}
+`;

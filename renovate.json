@@ -1,0 +1,6 @@
+{
+  "extends": [
+    "@nuxtjs"
+  ],
+  "labels": ["dependencies"]
+}
