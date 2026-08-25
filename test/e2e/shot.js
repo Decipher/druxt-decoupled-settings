@@ -16,7 +16,7 @@ const HIDE_FIXED_CHROME_CSS = `
   body { padding-top: 0 !important; }
 `
 
-const shoot = async (page, selector, path, { padding = 32, bottomSelector = '' } = {}) => {
+const shoot = async (page, selector, path, { padding = 0, bottomPadding = 24, bottomSelector = '' } = {}) => {
   await page.addStyleTag({ content: HIDE_FIXED_CHROME_CSS })
   await page.evaluate(() => window.scrollTo(0, 0))
   const box = await page.locator(selector).first().boundingBox()
@@ -30,11 +30,13 @@ const shoot = async (page, selector, path, { padding = 32, bottomSelector = '' }
     if (last) bottom = last.y + last.height
   }
 
+  // A region wrapper carries its own internal padding, so the default is a
+  // flush crop; extra padding on top of it reads as a lopsided margin.
   const clip = {
     x: Math.max(0, box.x - padding),
     y: Math.max(0, box.y - padding),
     width: box.width + padding * 2,
-    height: bottom - Math.max(0, box.y - padding) + padding,
+    height: bottom - Math.max(0, box.y - padding) + bottomPadding,
   }
   const viewport = page.viewportSize()
   await page.setViewportSize({
