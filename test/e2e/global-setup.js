@@ -16,7 +16,9 @@ module.exports = async () => {
 
   const state = path.join(dir, 'state.json')
   const link = process.env.DRUPAL_LOGIN_LINK
-  if (!link) {
+  // The admin spec skips without a backend URL, so do not spend the one
+  // time login link on a frontend-only run.
+  if (!link || !process.env.DRUPAL_URL) {
     fs.writeFileSync(state, JSON.stringify({ cookies: [], origins: [] }))
     return
   }
