@@ -46,6 +46,9 @@ test.describe('Decoupled Settings administration', () => {
   })
 
   test('the overrides form shows inherited and overridden settings', async ({ page }) => {
+    // Wider than the default viewport: at 1280 the setting-name column
+    // wraps mid-key, which reads as a rendering fault in the screenshot.
+    await page.setViewportSize({ width: 1600, height: 900 })
     await page.goto(`${DRUPAL_URL}/admin/config/services/consumer`)
     const row = page.locator('tr', { hasText: 'partner_frontend' })
     const href = await row.locator('a[href*="decoupled-settings"]').first().getAttribute('href')
