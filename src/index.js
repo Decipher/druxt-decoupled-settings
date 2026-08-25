@@ -81,11 +81,16 @@ export const applyToHead = (head = {}, attributes, baseUrl = '') => {
 
   if (site.name) {
     // Druxt router sets a per-page title from Drupal; the template brands
-    // every one with this consumer's site name, and a page with no title
-    // of its own gets the full name-and-slogan brand.
-    head.title = site.slogan || ''
-    head.titleTemplate = (chunk) =>
-      chunk ? `${chunk} | ${site.name}` : site.name
+    // every one with this consumer's site name. A closure would not
+    // survive here: Nuxt serializes head into the build and a function
+    // loses its scope, so only string templates are safe.
+    if (site.slogan) {
+      head.title = site.slogan
+      head.titleTemplate = `%s | ${site.name}`
+    }
+    else {
+      head.title = site.name
+    }
   }
   if (themeSettings.favicon && themeSettings.favicon.url) {
     const href = themeSettings.favicon.url.startsWith('http')

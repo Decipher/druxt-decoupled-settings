@@ -16,9 +16,9 @@ describe('applyToHead', () => {
   test('builds the title from the site name and slogan', () => {
     const head = applyToHead({}, attributes)
     expect(head.title).toBe('Same code, different consumer')
-    expect(head.titleTemplate('Welcome!')).toBe('Welcome! | Partner Portal')
-    expect(head.titleTemplate(head.title)).toBe('Same code, different consumer | Partner Portal')
-    expect(head.titleTemplate('')).toBe('Partner Portal')
+    // A string template, never a function: Nuxt serializes head into the
+    // build, and a function loses its closure there.
+    expect(head.titleTemplate).toBe('%s | Partner Portal')
   })
 
   test('uses the name alone when there is no slogan', () => {
@@ -26,8 +26,8 @@ describe('applyToHead', () => {
       consumer: null,
       settings: { 'system.site': { name: 'Solo' } },
     })
-    expect(head.title).toBe('')
-    expect(head.titleTemplate('')).toBe('Solo')
+    expect(head.title).toBe('Solo')
+    expect(head.titleTemplate).toBeUndefined()
   })
 
   test('replaces the icon with the resolved theme favicon', () => {
