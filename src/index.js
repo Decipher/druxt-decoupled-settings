@@ -80,10 +80,12 @@ export const applyToHead = (head = {}, attributes, baseUrl = '') => {
   const themeSettings = theme ? theme[1] : {}
 
   if (site.name) {
-    head.title = site.slogan ? `${site.name} | ${site.slogan}` : site.name
     // Druxt router sets a per-page title from Drupal; the template brands
-    // every one of them with this consumer's site name.
-    head.titleTemplate = `%s | ${site.name}`
+    // every one with this consumer's site name, and a page with no title
+    // of its own gets the full name-and-slogan brand.
+    head.title = site.slogan || ''
+    head.titleTemplate = (chunk) =>
+      chunk ? `${chunk} | ${site.name}` : site.name
   }
   if (themeSettings.favicon && themeSettings.favicon.url) {
     const href = themeSettings.favicon.url.startsWith('http')

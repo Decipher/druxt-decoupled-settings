@@ -15,8 +15,10 @@ const jsonapiResponse = { status: 200, body: JSON.stringify({ data: { attributes
 describe('applyToHead', () => {
   test('builds the title from the site name and slogan', () => {
     const head = applyToHead({}, attributes)
-    expect(head.title).toBe('Partner Portal | Same code, different consumer')
-    expect(head.titleTemplate).toBe('%s | Partner Portal')
+    expect(head.title).toBe('Same code, different consumer')
+    expect(head.titleTemplate('Welcome!')).toBe('Welcome! | Partner Portal')
+    expect(head.titleTemplate(head.title)).toBe('Same code, different consumer | Partner Portal')
+    expect(head.titleTemplate('')).toBe('Partner Portal')
   })
 
   test('uses the name alone when there is no slogan', () => {
@@ -24,7 +26,8 @@ describe('applyToHead', () => {
       consumer: null,
       settings: { 'system.site': { name: 'Solo' } },
     })
-    expect(head.title).toBe('Solo')
+    expect(head.title).toBe('')
+    expect(head.titleTemplate('')).toBe('Solo')
   })
 
   test('replaces the icon with the resolved theme favicon', () => {
@@ -128,7 +131,7 @@ describe('DruxtDecoupledSettingsModule', () => {
 
     expect(mock.options.publicRuntimeConfig.decoupledConsumer).toBe('partner_frontend')
     expect(mock.options.publicRuntimeConfig.decoupledSettings['system.site'].name).toBe('Partner Portal')
-    expect(mock.options.head.title).toBe('Partner Portal | Same code, different consumer')
+    expect(mock.options.head.title).toBe('Same code, different consumer')
     expect(mock.options.publicRuntimeConfig.decoupledBaseUrl).toContain('http://127.0.0.1:')
   })
 })
