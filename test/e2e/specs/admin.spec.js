@@ -1,5 +1,6 @@
 const path = require('path')
 const { test, expect } = require('@playwright/test')
+const { shoot } = require('../shot')
 
 const DRUPAL_URL = process.env.DRUPAL_URL
 const shot = (name) => path.resolve(__dirname, `../screenshots/${name}.png`)
@@ -13,9 +14,13 @@ test.describe('Decoupled Settings administration', () => {
 
     await expect(page.getByRole('heading', { name: 'Decoupled Settings' })).toBeVisible()
     await expect(page.getByText('What a frontend will read')).toBeVisible()
-    await expect(page.getByRole('cell', { name: 'system.site' }).first()).toBeVisible()
 
-    await page.screenshot({ path: shot('01-exposure-form'), fullPage: true })
+    // The filter narrows the review to one object - it keeps the capture
+    // compact and shows the filter working, both at once.
+    await page.getByPlaceholder('Filter by setting name or value').last().fill('system.site')
+    await expect(page.getByRole('cell', { name: 'system.site', exact: true }).first()).toBeVisible()
+
+    await shoot(page, 'form.decoupled-settings-settings, #decoupled-settings-settings, main form', shot('01-exposure-form'))
   })
 
   test('the consumer list counts each consumer\'s overrides', async ({ page }) => {
@@ -23,8 +28,10 @@ test.describe('Decoupled Settings administration', () => {
 
     await expect(page.getByRole('columnheader', { name: 'Overrides' })).toBeVisible()
     await expect(page.getByText('partner_frontend')).toBeVisible()
+    // The quickstart's own OAuth login consumer is plumbing, not the story.
+    await expect(page.getByRole('cell', { name: 'Druxt', exact: true })).toHaveCount(0)
 
-    await page.screenshot({ path: shot('02-consumer-list'), fullPage: true })
+    await shoot(page, 'main table', shot('02-consumer-list'))
   })
 
   test('the overrides form shows inherited and overridden settings', async ({ page }) => {
@@ -37,6 +44,8 @@ test.describe('Decoupled Settings administration', () => {
     // The partner's own override is ticked.
     await expect(page.getByRole('checkbox', { name: 'Override system.site:name' })).toBeChecked()
 
-    await page.screenshot({ path: shot('03-consumer-overrides'), fullPage: true })
+    await page.getByPlaceholder('Filter by setting name or value').fill('system.site')
+
+    await shoot(page, 'main form', shot('03-consumer-overrides'))
   })
 })

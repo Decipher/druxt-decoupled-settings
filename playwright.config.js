@@ -18,7 +18,7 @@ module.exports = {
   reporter: [['list'], ['junit', { outputFile: 'test/e2e/reports/junit.xml' }]],
   use: {
     headless: true,
-    viewport: { width: 1440, height: 900 },
+    viewport: { width: 1280, height: 900 },
     screenshot: 'only-on-failure',
   },
 }

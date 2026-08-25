@@ -37,7 +37,9 @@ for (const site of cases) {
       await expect(logo).toBeVisible()
       expect(await logo.getAttribute('src')).toBe('/_decoupled/logo')
 
-      await page.screenshot({ path: shot(site.file), fullPage: true })
+      // Viewport shot, not full page: the branding header and the start of
+      // the settings dump tell the story without a scroll of json.
+      await page.screenshot({ path: shot(site.file) })
     })
   })
 }
