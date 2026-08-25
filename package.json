@@ -23,7 +23,8 @@
     "changeset": "changeset",
     "lint": "eslint --ext .js,.vue src",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@babel/core": "7.20.2",
@@ -38,7 +39,8 @@
     "jest": "27.5.1",
     "siroc": "0.16.0",
     "vue-jest": "3.0.7",
-    "vue-template-compiler": "2.7.14"
+    "vue-template-compiler": "2.7.14",
+    "@playwright/test": "^1.49.0"
   },
   "publishConfig": {
     "access": "public"

@@ -5,7 +5,7 @@ module.exports = {
   moduleFileExtensions: ['js', 'json'],
   modulePathIgnorePatterns: ['/example/'],
   testEnvironment: 'node',
-  testPathIgnorePatterns: ['/example/'],
+  testPathIgnorePatterns: ['/example/', '/test/e2e/'],
   transform: {
     '^.+\\.(js)$': 'esbuild-jest',
     '^.+\\.(mjs)$': 'esbuild-jest'
