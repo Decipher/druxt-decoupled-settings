@@ -28,6 +28,9 @@ test.describe('Decoupled Settings administration', () => {
   })
 
   test('the consumer list counts each consumer\'s overrides', async ({ page }) => {
+    // Wider than the default viewport: the list has seven columns, and at
+    // 1280 the labels wrap.
+    await page.setViewportSize({ width: 1720, height: 900 })
     await page.goto(`${DRUPAL_URL}/admin/config/services/consumer`)
 
     await expect(page.getByRole('columnheader', { name: 'Overrides' })).toBeVisible()
@@ -35,7 +38,11 @@ test.describe('Decoupled Settings administration', () => {
     // The quickstart's own OAuth login consumer is plumbing, not the story.
     await expect(page.getByRole('cell', { name: 'Druxt', exact: true })).toHaveCount(0)
 
-    await shoot(page, 'main table', shot('02-consumer-list'))
+    // A bare table, unlike the region shots, earns its own breathing room.
+    // The add-consumer action button sits just above the crop and would
+    // bleed into the padding as a stray fragment.
+    await page.addStyleTag({ content: '.local-actions, ul.action-links { display: none !important; }' })
+    await shoot(page, 'main table', shot('02-consumer-list'), { padding: 32, bottomPadding: 32 })
   })
 
   test('the overrides form shows inherited and overridden settings', async ({ page }) => {
