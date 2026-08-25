@@ -2,14 +2,13 @@ module.exports = {
   collectCoverage: true,
   coverageDirectory: './coverage/',
   coveragePathIgnorePatterns: ['/dist/'],
-  moduleFileExtensions: ['js', 'json', 'vue'],
+  moduleFileExtensions: ['js', 'json'],
   modulePathIgnorePatterns: ['/example/'],
-  testEnvironment: 'jsdom',
+  testEnvironment: 'node',
   testPathIgnorePatterns: ['/example/'],
   transform: {
     '^.+\\.(js)$': 'esbuild-jest',
-    '^.+\\.(mjs)$': 'esbuild-jest',
-    '^.+\\.(vue)$': 'vue-jest'
+    '^.+\\.(mjs)$': 'esbuild-jest'
   },
   transformIgnorePatterns: ["/node_modules/(?!(druxt)/)"]
 }
