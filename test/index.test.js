@@ -1,4 +1,4 @@
-import DruxtDecoupledSettingsModule, { applyToHead, fetchSettings, getToken } from '../src'
+import DruxtDecoupledSettingsModule, { applyToHead, assetProxy, collectAssets, fetchSettings, getToken } from '../src'
 
 const attributes = {
   consumer: 'partner_frontend',
@@ -10,11 +10,11 @@ const attributes = {
   },
 }
 
-const jsonapiResponse = { status: 200, body: JSON.stringify({ data: { attributes } }) }
+const jsonapiResponse = () => ({ status: 200, body: JSON.stringify({ data: { attributes } }) })
 
 describe('applyToHead', () => {
   test('builds the title from the site name and slogan', () => {
-    const head = applyToHead({}, attributes)
+    const head = applyToHead({}, JSON.parse(JSON.stringify(attributes)))
     expect(head.title).toBe('Same code, different consumer')
     // A string template, never a function: Nuxt serializes head into the
     // build, and a function loses its closure there.
@@ -30,22 +30,24 @@ describe('applyToHead', () => {
     expect(head.titleTemplate).toBeUndefined()
   })
 
-  test('replaces the icon with the resolved theme favicon', () => {
+  test('replaces the icon with the theme favicon, verbatim when rooted', () => {
+    // After collectAssets the url is a frontend path; a rooted url is used
+    // as it is, never prefixed with the backend.
     const head = applyToHead(
       { link: [{ rel: 'icon', href: '/favicon.ico' }] },
-      attributes,
+      JSON.parse(JSON.stringify(attributes)),
       'http://backend:8888'
     )
     expect(head.link).toHaveLength(1)
     expect(head.link[0]).toEqual({
       rel: 'icon',
       type: 'image/vnd.microsoft.icon',
-      href: 'http://backend:8888/core/themes/olivero/favicon.ico',
+      href: '/core/themes/olivero/favicon.ico',
     })
   })
 
   test('leaves non-icon links alone', () => {
-    const head = applyToHead({ link: [{ rel: 'preconnect', href: 'x' }] }, attributes, '')
+    const head = applyToHead({ link: [{ rel: 'preconnect', href: 'x' }] }, JSON.parse(JSON.stringify(attributes)), '')
     expect(head.link.map((l) => l.rel).sort()).toEqual(['icon', 'preconnect'])
   })
 
@@ -57,7 +59,7 @@ describe('applyToHead', () => {
 
 describe('fetchSettings', () => {
   test('sends the consumer header and returns the attributes', async () => {
-    const doRequest = jest.fn().mockResolvedValue(jsonapiResponse)
+    const doRequest = jest.fn().mockResolvedValue(jsonapiResponse())
 
     const result = await fetchSettings(
       { baseUrl: 'http://backend', consumerId: 'partner_frontend' },
@@ -76,7 +78,7 @@ describe('fetchSettings', () => {
   test('authenticates with client credentials when configured', async () => {
     const doRequest = jest.fn()
       .mockResolvedValueOnce({ status: 200, body: JSON.stringify({ access_token: 'tok' }) })
-      .mockResolvedValueOnce(jsonapiResponse)
+      .mockResolvedValueOnce(jsonapiResponse())
 
     await fetchSettings(
       { baseUrl: 'http://backend', clientId: 'app', clientSecret: 's3cret' },
@@ -97,6 +99,86 @@ describe('fetchSettings', () => {
 
     await expect(fetchSettings({ baseUrl: 'http://backend' }, doRequest))
       .rejects.toThrow('read decoupled settings')
+  })
+})
+
+describe('collectAssets', () => {
+  test('rewrites named assets and lists their backend targets', () => {
+    const settings = {
+      'system.site': { name: 'kept alone' },
+      'olivero.settings': {
+        logo: { url: '/core/themes/olivero/logo.svg' },
+        favicon: { url: 'http://cdn.example.com/favicon.ico' },
+      },
+    }
+
+    const assets = collectAssets(settings, 'http://backend:8888')
+
+    expect(assets).toEqual({
+      logo: 'http://backend:8888/core/themes/olivero/logo.svg',
+      favicon: 'http://cdn.example.com/favicon.ico',
+    })
+    expect(settings['olivero.settings'].logo.url).toBe('/_decoupled/logo')
+    expect(settings['olivero.settings'].favicon.url).toBe('/_decoupled/favicon')
+    expect(settings['system.site']).toEqual({ name: 'kept alone' })
+  })
+
+  test('collects nothing without theme assets', () => {
+    expect(collectAssets({ 'system.site': { name: 'x' } }, 'http://b')).toEqual({})
+  })
+})
+
+describe('assetProxy', () => {
+  const respond = () => {
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: '',
+      setHeader(name, value) { this.headers[name] = value },
+      end(chunk) { this.body += chunk || ''; this.ended = true },
+    }
+    return res
+  }
+
+  test('serves an allowlisted asset from the backend', async () => {
+    const httpModule = require('http')
+    const backend = httpModule.createServer((req, res) => {
+      res.setHeader('Content-Type', 'image/svg+xml')
+      res.end('<svg/>')
+    })
+    await new Promise((resolve) => backend.listen(0, resolve))
+    const backendPort = backend.address().port
+
+    const front = httpModule.createServer(
+      assetProxy({ logo: `http://127.0.0.1:${backendPort}/logo.svg` })
+    )
+    await new Promise((resolve) => front.listen(0, resolve))
+    const frontPort = front.address().port
+
+    const response = await new Promise((resolve, reject) => {
+      httpModule.get(`http://127.0.0.1:${frontPort}/logo`, (res) => {
+        let body = ''
+        res.on('data', (chunk) => { body += chunk })
+        res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body }))
+      }).on('error', reject)
+    })
+    backend.close()
+    front.close()
+
+    expect(response.status).toBe(200)
+    expect(response.headers['content-type']).toBe('image/svg+xml')
+    expect(response.headers['cache-control']).toContain('max-age')
+    expect(response.body).toBe('<svg/>')
+  })
+
+  test('refuses everything not on the allowlist', () => {
+    const handler = assetProxy({ logo: 'http://backend/logo.svg' })
+
+    for (const url of ['/favicon', '/logo/../settings.php', '/', '/anything?x=1']) {
+      const res = respond()
+      handler({ url }, res)
+      expect(res.statusCode).toBe(404)
+    }
   })
 })
 
@@ -121,6 +203,7 @@ describe('DruxtDecoupledSettingsModule', () => {
     const { port } = server.address()
 
     const mock = {
+      addServerMiddleware: jest.fn(),
       options: {
         druxt: { baseUrl: `http://127.0.0.1:${port}` },
         head: {},
@@ -133,5 +216,13 @@ describe('DruxtDecoupledSettingsModule', () => {
     expect(mock.options.publicRuntimeConfig.decoupledSettings['system.site'].name).toBe('Partner Portal')
     expect(mock.options.head.title).toBe('Same code, different consumer')
     expect(mock.options.publicRuntimeConfig.decoupledBaseUrl).toContain('http://127.0.0.1:')
+    // The favicon in the settings names a file, so the proxy is registered
+    // and the baked URL points at the frontend, not the backend.
+    expect(mock.addServerMiddleware).toHaveBeenCalledWith(
+      expect.objectContaining({ path: '/_decoupled' })
+    )
+    expect(
+      mock.options.publicRuntimeConfig.decoupledSettings['olivero.settings'].favicon.url
+    ).toBe('/_decoupled/favicon')
   })
 })

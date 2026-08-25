@@ -67,6 +67,61 @@ export const fetchSettings = async (options, doRequest = request) => {
 }
 
 /**
+ * Builds a server middleware that proxies only the allowlisted assets.
+ *
+ * The allowlist is built from the fetched settings, so the frontend serves
+ * the consumer's logo and favicon from its own origin and the backend needs
+ * no public exposure. Anything not in the list is a 404: this is a proxy to
+ * named files, never to the backend.
+ */
+export const assetProxy = (assets) => (req, res) => {
+  const key = (req.url || '').replace(/^\/+/, '').replace(/[?#].*$/, '')
+  const target = assets[key]
+  if (!target) {
+    res.statusCode = 404
+    res.end('Not found')
+    return
+  }
+  const lib = target.startsWith('https:') ? https : http
+  lib
+    // No keep-alive agent: a pooled socket would hold the process open.
+    .get(target, { agent: false }, (upstream) => {
+      res.statusCode = upstream.statusCode
+      if (upstream.headers['content-type']) {
+        res.setHeader('Content-Type', upstream.headers['content-type'])
+      }
+      res.setHeader('Cache-Control', 'public, max-age=3600')
+      upstream.pipe(res)
+    })
+    .on('error', () => {
+      res.statusCode = 502
+      res.end('Bad gateway')
+    })
+}
+
+/**
+ * Rewrites the theme asset URLs to frontend paths and lists the targets.
+ *
+ * Mutates the settings so every consumer of the runtime config gets a URL
+ * that works from the browser, and returns the name-to-backend-URL map the
+ * proxy serves.
+ */
+export const collectAssets = (settings, baseUrl) => {
+  const assets = {}
+  for (const [group, values] of Object.entries(settings)) {
+    if (group === 'system.site' || !group.endsWith('.settings')) continue
+    for (const name of ['logo', 'favicon']) {
+      const item = values[name]
+      if (item && item.url) {
+        assets[name] = item.url.startsWith('http') ? item.url : `${baseUrl}${item.url}`
+        item.url = `/_decoupled/${name}`
+      }
+    }
+  }
+  return assets
+}
+
+/**
  * Applies the consumer's settings to a Nuxt head object.
  *
  * The site name and slogan become the document title, and the active
@@ -93,9 +148,8 @@ export const applyToHead = (head = {}, attributes, baseUrl = '') => {
     }
   }
   if (themeSettings.favicon && themeSettings.favicon.url) {
-    const href = themeSettings.favicon.url.startsWith('http')
-      ? themeSettings.favicon.url
-      : `${baseUrl}${themeSettings.favicon.url}`
+    const { url } = themeSettings.favicon
+    const href = url.startsWith('/') || url.startsWith('http') ? url : `${baseUrl}${url}`
     head.link = (head.link || [])
       .filter((link) => link.rel !== 'icon')
       .concat([{ rel: 'icon', type: themeSettings.favicon.mimetype || 'image/x-icon', href }])
@@ -124,6 +178,13 @@ const DruxtDecoupledSettingsModule = async function (moduleOptions = {}) {
   }
 
   const attributes = await fetchSettings(options)
+
+  // Serve the consumer's own assets from the frontend origin. The proxy
+  // only knows the files the settings name.
+  const assets = collectAssets(attributes.settings, options.baseUrl)
+  if (Object.keys(assets).length) {
+    this.addServerMiddleware({ path: '/_decoupled', handler: assetProxy(assets) })
+  }
 
   this.options.publicRuntimeConfig = this.options.publicRuntimeConfig || {}
   this.options.publicRuntimeConfig.decoupledSettings = attributes.settings

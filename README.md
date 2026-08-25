@@ -43,6 +43,15 @@ export default {
 }
 ```
 
+## Asset proxy
+
+The consumer's logo and favicon are served from the frontend's own origin at
+`/_decoupled/logo` and `/_decoupled/favicon`, by a server middleware whose
+allowlist is exactly the files the settings name. The backend needs no public
+exposure for assets, and nothing outside the allowlist is reachable - this is
+a proxy to named files, never to the backend. The baked settings are rewritten
+to these paths, so components can use `logo.url` as it is.
+
 Anywhere in the app:
 
 ```js
