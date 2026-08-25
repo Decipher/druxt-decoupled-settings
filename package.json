@@ -48,6 +48,6 @@
   "description": "Bakes Drupal Decoupled Settings into the Nuxt build, per consumer.",
   "repository": {
     "type": "git",
-    "url": "https://gitlab.local/druxt/druxt-decoupled-settings"
+    "url": "https://github.com/druxt-contrib/decoupled-settings"
   }
 }

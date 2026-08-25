@@ -1,6 +1,6 @@
 # DruxtDecoupledSettings
 
-> Bakes Drupal [Decoupled Settings](http://gitlab.local/drupal/decoupled_settings)
+> Bakes Drupal [Decoupled Settings](https://www.drupal.org/project/decoupled_settings)
 > into the Nuxt build, per consumer.
 
 The same frontend code renders as whichever site its consumer is: at build
@@ -75,7 +75,7 @@ build) to render two differently branded sites from one backend.
 
 ## Drupal requirements
 
-- [Decoupled Settings](http://gitlab.local/drupal/decoupled_settings) with the
+- [Decoupled Settings](https://www.drupal.org/project/decoupled_settings) with the
   `read decoupled settings` permission granted to whoever fetches: the
   anonymous role for public consumers, or a role reachable through an OAuth2
   scope for authenticated ones.
