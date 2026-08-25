@@ -106,3 +106,4 @@ dist
 .tern-port
 test/e2e/reports/
 test/e2e/screenshots/
+test-results/
