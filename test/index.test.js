@@ -16,6 +16,7 @@ describe('applyToHead', () => {
   test('builds the title from the site name and slogan', () => {
     const head = applyToHead({}, attributes)
     expect(head.title).toBe('Partner Portal | Same code, different consumer')
+    expect(head.titleTemplate).toBe('%s | Partner Portal')
   })
 
   test('uses the name alone when there is no slogan', () => {
@@ -128,5 +129,6 @@ describe('DruxtDecoupledSettingsModule', () => {
     expect(mock.options.publicRuntimeConfig.decoupledConsumer).toBe('partner_frontend')
     expect(mock.options.publicRuntimeConfig.decoupledSettings['system.site'].name).toBe('Partner Portal')
     expect(mock.options.head.title).toBe('Partner Portal | Same code, different consumer')
+    expect(mock.options.publicRuntimeConfig.decoupledBaseUrl).toContain('http://127.0.0.1:')
   })
 })

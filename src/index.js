@@ -81,6 +81,9 @@ export const applyToHead = (head = {}, attributes, baseUrl = '') => {
 
   if (site.name) {
     head.title = site.slogan ? `${site.name} | ${site.slogan}` : site.name
+    // Druxt router sets a per-page title from Drupal; the template brands
+    // every one of them with this consumer's site name.
+    head.titleTemplate = `%s | ${site.name}`
   }
   if (themeSettings.favicon && themeSettings.favicon.url) {
     const href = themeSettings.favicon.url.startsWith('http')
@@ -118,6 +121,9 @@ const DruxtDecoupledSettingsModule = async function (moduleOptions = {}) {
   this.options.publicRuntimeConfig = this.options.publicRuntimeConfig || {}
   this.options.publicRuntimeConfig.decoupledSettings = attributes.settings
   this.options.publicRuntimeConfig.decoupledConsumer = attributes.consumer
+  // Components need the backend origin to resolve relative asset paths,
+  // such as the theme logo, from the settings.
+  this.options.publicRuntimeConfig.decoupledBaseUrl = options.baseUrl
 
   if (options.applyHead) {
     this.options.head = applyToHead(this.options.head, attributes, options.baseUrl)
