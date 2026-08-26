@@ -27,7 +27,7 @@
     "build": "siroc build",
     "build:watch": "siroc build --watch",
     "changeset": "changeset",
-    "lint": "eslint --ext .js,.vue src test",
+    "lint": "eslint --ext .js,.vue src test example",
     "test": "jest",
     "test:e2e": "playwright test",
     "test:watch": "jest --watch"

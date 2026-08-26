@@ -1,8 +1,15 @@
 <template>
   <main>
-    <img v-if="logo" :src="logo" :alt="name" height="60">
+    <img
+      v-if="logo"
+      :src="logo"
+      :alt="name"
+      height="60"
+    >
     <h1>{{ name }}</h1>
-    <p v-if="slogan">{{ slogan }}</p>
+    <p v-if="slogan">
+      {{ slogan }}
+    </p>
     <p>
       Rendered as consumer <code>{{ consumer || 'none, global values' }}</code>.
     </p>
@@ -12,6 +19,11 @@
 
 <script>
 export default {
+  // Nuxt routes this file as the root page, so the single-word name is
+  // required rather than a choice.
+  // eslint-disable-next-line vue/multi-word-component-names
+  name: 'Index',
+
   computed: {
     settings() {
       return this.$config.decoupledSettings || {}

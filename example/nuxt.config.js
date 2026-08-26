@@ -1,4 +1,9 @@
 export default {
+  // Nuxt does not read this variable by itself, and each consumer needs its
+  // own directory: the settings are baked into the build, so a shared one
+  // means last build wins.
+  buildDir: process.env.NUXT_BUILD_DIR || '.nuxt',
+
   modules: [
     '@druxt-contrib/decoupled-settings',
   ],

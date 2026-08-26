@@ -28,13 +28,15 @@ For an authenticated fetch instead, give the consumer a client secret and a
 ```sh
 npm install
 
-# One consumer.
-BASE_URL=http://localhost:8080 DRUXT_CONSUMER_ID=public_frontend \
-  NUXT_BUILD_DIR=.nuxt-public PORT=3000 npm run build && npm start
+# One consumer. Both commands need the same NUXT_BUILD_DIR, and start
+# needs its own PORT: a variable prefix applies to one command only.
+export BASE_URL=http://localhost:8080
+DRUXT_CONSUMER_ID=public_frontend NUXT_BUILD_DIR=.nuxt-public npm run build
+NUXT_BUILD_DIR=.nuxt-public PORT=3000 npm start
 
 # The other, same code.
-BASE_URL=http://localhost:8080 DRUXT_CONSUMER_ID=partner_frontend \
-  NUXT_BUILD_DIR=.nuxt-partner PORT=3001 npm run build && npm start
+DRUXT_CONSUMER_ID=partner_frontend NUXT_BUILD_DIR=.nuxt-partner npm run build
+NUXT_BUILD_DIR=.nuxt-partner PORT=3001 npm start
 ```
 
 Separate build directories matter: the settings are baked into the build, so
