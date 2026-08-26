@@ -91,6 +91,11 @@ export const assetProxy = (assets, { timeout = 10000 } = {}) => (req, res) => {
         res.setHeader('Content-Type', upstream.headers['content-type'])
       }
       res.setHeader('Cache-Control', 'public, max-age=3600')
+      // pipe() does not forward an error on the source. Without these the
+      // downstream response stays open forever when the backend dies part
+      // way through a body it already promised.
+      upstream.on('error', () => res.destroy())
+      upstream.on('aborted', () => res.destroy())
       upstream.pipe(res)
     })
     .on('error', () => {

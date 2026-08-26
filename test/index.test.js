@@ -1,5 +1,4 @@
-/* eslint-env jest */
-import DruxtDecoupledSettingsModule, { applyToHead, assetProxy, collectAssets, fetchSettings, getToken } from '../src'
+import DruxtDecoupledSettingsModule, { applyToHead, assetProxy, collectAssets, fetchSettings, getToken, request } from '../src'
 
 const attributes = {
   consumer: 'partner_frontend',
@@ -104,11 +103,47 @@ describe('fetchSettings', () => {
     expect(settingsRequest.headers.Authorization).toBe('Bearer tok')
   })
 
+  test('fetches anonymously when no consumer or credentials are given', async () => {
+    const doRequest = jest.fn().mockResolvedValue({
+      status: 200,
+      body: JSON.stringify({ data: { attributes: { consumer: null, settings: {} } } }),
+    })
+
+    const attributes = await fetchSettings({ baseUrl: 'http://b' }, doRequest)
+
+    const [, sent] = doRequest.mock.calls[0]
+    expect(sent.headers['X-Consumer-ID']).toBeUndefined()
+    expect(sent.headers.Authorization).toBeUndefined()
+    expect(sent.headers.Accept).toBe('application/vnd.api+json')
+    expect(attributes.consumer).toBeNull()
+  })
+
   test('throws a pointed error on an access failure', async () => {
     const doRequest = jest.fn().mockResolvedValue({ status: 403, body: '' })
 
     await expect(fetchSettings({ baseUrl: 'http://backend' }, doRequest))
       .rejects.toThrow('read decoupled settings')
+  })
+})
+
+describe('request', () => {
+  test('resolves the status and body of a plain GET', async () => {
+    const httpModule = require('http')
+    const server = httpModule.createServer((req, res) => {
+      res.statusCode = 201
+      res.end('pong')
+    })
+    await new Promise((resolve) => server.listen(0, resolve))
+
+    const response = await request(`http://127.0.0.1:${server.address().port}/ping`)
+
+    expect(response).toEqual({ status: 201, body: 'pong' })
+    server.close()
+  })
+
+  test('rejects when the host cannot be reached', async () => {
+    // Port 1 on loopback: nothing listens, so the socket errors at once.
+    await expect(request('http://127.0.0.1:1/nowhere')).rejects.toThrow()
   })
 })
 
@@ -142,6 +177,16 @@ describe('collectAssets', () => {
     expect(assets.favicon).toBe('https://backend.example.com/olivero.ico')
     expect(settings['olivero.settings'].favicon.url).toBe('/_decoupled/favicon')
     expect(settings['claro.settings'].favicon.url).toBe('https://backend.example.com/claro.ico')
+  })
+
+  test('leaves an already absolute asset URL alone', () => {
+    const settings = {
+      'olivero.settings': { logo: { url: 'https://cdn.example.com/logo.svg' } },
+    }
+    const assets = collectAssets(settings, 'https://backend.example.com')
+
+    expect(assets.logo).toBe('https://cdn.example.com/logo.svg')
+    expect(settings['olivero.settings'].logo.url).toBe('/_decoupled/logo')
   })
 
   test('collects nothing without theme assets', () => {
@@ -219,6 +264,115 @@ describe('assetProxy', () => {
     silent.close()
   })
 
+  test('never leaves the client hanging when the backend dies mid-body', async () => {
+    const httpModule = require('http')
+    // Promises 100 bytes, sends four, then drops the socket.
+    const flaky = httpModule.createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Content-Length': '100' })
+      res.write('<svg')
+      res.socket.destroy()
+    })
+    await new Promise((resolve) => flaky.listen(0, resolve))
+    const flakyPort = flaky.address().port
+
+    const front = httpModule.createServer(
+      assetProxy({ logo: `http://127.0.0.1:${flakyPort}/logo.svg` })
+    )
+    await new Promise((resolve) => front.listen(0, resolve))
+    const frontPort = front.address().port
+
+    // Whether the proxy has flushed its own headers by the time the backend
+    // dies is a race, so both endings are correct: a gateway error, or a
+    // truncated body. What must never happen is neither, which is what a
+    // pipe with no error forwarding does.
+    const result = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => resolve({ hung: true }), 3000)
+      const settle = (value) => { clearTimeout(timer); resolve(value) }
+      httpModule.get(`http://127.0.0.1:${frontPort}/logo`, (res) => {
+        let body = ''
+        res.on('data', (chunk) => { body += chunk })
+        res.on('end', () => settle({ statusCode: res.statusCode, body }))
+        res.on('error', () => settle({ statusCode: res.statusCode, body, aborted: true }))
+      }).on('error', reject)
+    })
+
+    expect(result.hung).toBeUndefined()
+    if (result.statusCode === 502) {
+      expect(result.body).toBe('Bad gateway')
+    }
+    else {
+      expect(result.statusCode).toBe(200)
+      expect(result.body.length).toBeLessThan(100)
+    }
+
+    front.close()
+    flaky.close()
+  })
+
+  test('passes an asset through without a content type', async () => {
+    const httpModule = require('http')
+    const backend = httpModule.createServer((req, res) => {
+      res.removeHeader('Content-Type')
+      res.end('raw')
+    })
+    await new Promise((resolve) => backend.listen(0, resolve))
+
+    const front = httpModule.createServer(
+      assetProxy({ favicon: `http://127.0.0.1:${backend.address().port}/favicon.ico` })
+    )
+    await new Promise((resolve) => front.listen(0, resolve))
+
+    const response = await new Promise((resolve, reject) => {
+      httpModule.get(`http://127.0.0.1:${front.address().port}/favicon`, (res) => {
+        let body = ''
+        res.on('data', (chunk) => { body += chunk })
+        res.on('end', () => resolve({ statusCode: res.statusCode, body, headers: res.headers }))
+      }).on('error', reject)
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.body).toBe('raw')
+    expect(response.headers['cache-control']).toBe('public, max-age=3600')
+
+    front.close()
+    backend.close()
+  })
+
+  test('closes the response when the backend dies after the body starts', async () => {
+    const httpModule = require('http')
+    // Headers and a chunk, then a pause long enough for the proxy to flush
+    // them downstream, then the socket goes. The proxy can no longer send a
+    // status, so its only honest move is to close the response too.
+    const flaky = httpModule.createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Content-Length': '10000' })
+      res.write('<svg')
+      setTimeout(() => res.socket.destroy(), 100)
+    })
+    await new Promise((resolve) => flaky.listen(0, resolve))
+
+    const front = httpModule.createServer(
+      assetProxy({ logo: `http://127.0.0.1:${flaky.address().port}/logo.svg` })
+    )
+    await new Promise((resolve) => front.listen(0, resolve))
+
+    const result = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => resolve({ hung: true }), 4000)
+      const settle = (value) => { clearTimeout(timer); resolve(value) }
+      httpModule.get(`http://127.0.0.1:${front.address().port}/logo`, (res) => {
+        let body = ''
+        res.on('data', (chunk) => { body += chunk })
+        res.on('end', () => settle({ ended: true, body }))
+        res.on('error', () => settle({ aborted: true, body }))
+      }).on('error', reject)
+    })
+
+    expect(result.hung).toBeUndefined()
+    expect(result.body.length).toBeLessThan(10000)
+
+    front.close()
+    flaky.close()
+  })
+
   test('refuses everything not on the allowlist', () => {
     const handler = assetProxy({ logo: 'http://backend/logo.svg' })
 
@@ -236,6 +390,31 @@ describe('getToken', () => {
 
     await expect(getToken({ baseUrl: 'http://b', clientId: 'a', clientSecret: 'b' }, doRequest))
       .rejects.toThrow('HTTP 400')
+  })
+
+  test('sends the configured scope, and a default when none is given', async () => {
+    const doRequest = jest.fn().mockResolvedValue({
+      status: 200,
+      body: JSON.stringify({ access_token: 'tok' }),
+    })
+
+    await getToken({ baseUrl: 'http://b', clientId: 'a', clientSecret: 'b', scope: 'reporting_app' }, doRequest)
+    expect(doRequest.mock.calls[0][1].body).toContain('scope=reporting_app')
+
+    // Simple OAuth 6 resolves no default for client_credentials, so the
+    // module names one rather than sending an empty scope.
+    await getToken({ baseUrl: 'http://b', clientId: 'a', clientSecret: 'b' }, doRequest)
+    expect(doRequest.mock.calls[1][1].body).toContain('scope=frontend_app')
+  })
+
+  test('returns the access token from a granted request', async () => {
+    const doRequest = jest.fn().mockResolvedValue({
+      status: 200,
+      body: JSON.stringify({ access_token: 'tok', token_type: 'Bearer' }),
+    })
+
+    await expect(getToken({ baseUrl: 'http://b', clientId: 'a', clientSecret: 'b' }, doRequest))
+      .resolves.toBe('tok')
   })
 })
 
@@ -272,5 +451,33 @@ describe('DruxtDecoupledSettingsModule', () => {
     expect(
       mock.options.publicRuntimeConfig.decoupledSettings['olivero.settings'].favicon.url
     ).toBe('/_decoupled/favicon')
+  })
+
+  test('leaves the head alone and skips the proxy when nothing needs them', async () => {
+    const httpModule = require('http')
+    const server = httpModule.createServer((req, res) => {
+      res.setHeader('Content-Type', 'application/vnd.api+json')
+      // No theme group, so there is no asset for the proxy to serve.
+      res.end(JSON.stringify({
+        data: { attributes: { consumer: null, settings: { 'system.site': { name: 'Plain' } } } },
+      }))
+    })
+    await new Promise((resolve) => server.listen(0, resolve))
+    const { port } = server.address()
+
+    const mock = {
+      addServerMiddleware: jest.fn(),
+      options: { head: { title: 'Set by the app' } },
+    }
+    await DruxtDecoupledSettingsModule.call(mock, {
+      baseUrl: `http://127.0.0.1:${port}`,
+      applyHead: false,
+    })
+    server.close()
+
+    expect(mock.addServerMiddleware).not.toHaveBeenCalled()
+    expect(mock.options.head.title).toBe('Set by the app')
+    expect(mock.options.publicRuntimeConfig.decoupledSettings['system.site'].name).toBe('Plain')
+    expect(mock.options.publicRuntimeConfig.decoupledConsumer).toBeNull()
   })
 })
