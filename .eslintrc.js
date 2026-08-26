@@ -5,4 +5,10 @@ module.exports = {
     'plugin:nuxt/recommended',
     'plugin:vue/recommended'
   ],
+  overrides: [
+    {
+      files: ['test/**/*.js'],
+      env: { jest: true },
+    },
+  ],
 }

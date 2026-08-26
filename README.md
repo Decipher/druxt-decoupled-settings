@@ -1,62 +1,108 @@
-# DruxtModule (template)
+# DruxtDecoupledSettings
 
-<!--
-[![npm](https://badgen.net/npm/v/druxt-module)](https://www.npmjs.com/package/druxt-module)
-[![Known Vulnerabilities](https://snyk.io/test/github/druxt/druxt-auth/badge.svg?targetFile=package.json)](https://snyk.io/test/github/druxt/druxt-auth?targetFile=package.json)
--->
-[![CI](https://github.com/druxt/module-template/actions/workflows/ci.yml/badge.svg)](https://github.com/druxt/module-template/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/druxt/module-template/branch/main/graph/badge.svg?token=TwCLJOKEjm)](https://codecov.io/gh/druxt/module-template)
+> Bakes Drupal [Decoupled Settings](https://www.drupal.org/project/decoupled_settings)
+> into the Nuxt build, per consumer.
 
-> This is a template for creating a DruxtJS module.
+The same frontend code renders as whichever site its consumer is: at build
+time the app identifies itself as a Drupal consumer, optionally authenticates
+with OAuth2 client credentials, reads `/jsonapi/decoupled/settings`, and bakes
+the resolved settings into `publicRuntimeConfig`. The consumer's site name and
+slogan become the document title, and the active theme's resolved favicon
+replaces the static one.
 
-## Links
-
-- DruxtJS: https://druxtjs.org
-- Community Discord server: https://discord.druxtjs.org
-
-## Getting started
-
-1. **Use this template**
-
-    Click the **Use this template** button in GitHub and follow the on-screen instructions to **Create a new repository**.
-
-2. **Build, dev, test, commit**
-
-    This repository is setup with for development using the following tools:
-
-    - [Siroc](https://github.com/unjs/siroc): `npm run build`
-    - [Jest](https://jestjs.io/): `npm test`
-    - Linting tools: `npm run lint`
-    - [Changesets](https://github.com/changesets/changesets): `npm run changesets`
-
-3. **Contribute**
-
-    Have a module you want to share with the Druxt community? Let us know via the [Community Discord server](https://discord.druxtjs.org).
-
-
-<!-- TODO - Update this for your module
+This is the app authenticating, not a user. [druxt-auth](https://github.com/druxt/druxt-auth)
+covers the user login flow; nothing covered the build-time flow before this
+module.
 
 ## Install
 
-`$ npm install druxt-module`
+```sh
+npm install @druxt-contrib/decoupled-settings
+```
 
-### Nuxt.js
-
-Add module to `nuxt.config.js`
+## Usage
 
 ```js
-module.exports = {
-  buildModules: ['druxt-module'],
+// nuxt.config.js
+export default {
+  modules: [
+    '@druxt-contrib/decoupled-settings',
+    'druxt-site',
+  ],
   druxt: {
-    baseUrl: 'https://demo-api.druxtjs.org'
-  }
+    baseUrl: 'https://drupal.example.com',
+  },
+  decoupledSettings: {
+    // Everything is optional and falls back to the environment.
+    consumerId: process.env.DRUXT_CONSUMER_ID,
+    clientId: process.env.OAUTH_CLIENT_ID,
+    clientSecret: process.env.OAUTH_CLIENT_SECRET,
+    scope: process.env.OAUTH_SCOPE,
+    applyHead: true,
+  },
 }
 ```
 
+## Asset proxy
+
+The consumer's logo and favicon are served from the frontend's own origin at
+`/_decoupled/logo` and `/_decoupled/favicon`, by a server middleware whose
+allowlist is exactly the files the settings name. The backend needs no public
+exposure for assets, and nothing outside the allowlist is reachable - this is
+a proxy to named files, never to the backend. The baked settings are rewritten
+to these paths, so components can use `logo.url` as it is.
+
+Anywhere in the app:
+
+```js
+this.$config.decoupledSettings['system.site'].name
+this.$config.decoupledConsumer
+```
+
+Run the same code twice with different `DRUXT_CONSUMER_ID` values (and, in
+dev, different `NUXT_BUILD_DIR` values, since the head is baked into the
+build) to render two differently branded sites from one backend.
+
 ## Options
 
-| Option | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `druxt.module.foo` | `string` | No | `bar` | ... |
+| Option | Env fallback | Purpose |
+|---|---|---|
+| `baseUrl` | `BASE_URL`, or `druxt.baseUrl` | The Drupal backend. |
+| `consumerId` | `DRUXT_CONSUMER_ID` | Consumer `client_id` whose overrides apply. |
+| `clientId` / `clientSecret` | `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET` | OAuth2 client_credentials pair. Without them the fetch is anonymous. |
+| `scope` | `OAUTH_SCOPE` | OAuth2 scope. Simple OAuth 6 resolves no default for client_credentials, so it must exist. |
+| `applyHead` | - | Apply title and favicon to the document head. Default `true`. |
 
--->
+## Drupal requirements
+
+- [Decoupled Settings](https://www.drupal.org/project/decoupled_settings) with the
+  `read decoupled settings` permission granted to whoever fetches: the
+  anonymous role for public consumers, or a role reachable through an OAuth2
+  scope for authenticated ones.
+- [Consumers](https://www.drupal.org/project/consumers). With
+  [Simple OAuth](https://www.drupal.org/project/simple_oauth), a
+  client_credentials token resolves the consumer by itself - Simple OAuth
+  injects the consumer identity into the request, so `consumerId` is only
+  needed for anonymous fetches.
+
+## Development
+
+```sh
+npm install
+npm test          # jest, with coverage thresholds
+npm run lint
+npm run build
+```
+
+The Playwright suite in `test/e2e/` runs against a provisioned Drupal and two
+built frontends, and doubles as the screenshot generator, so a published
+screenshot is always taken after the assertions on it pass. It needs
+`DRUPAL_URL`, `FRONTEND_PUBLIC_URL` and `FRONTEND_PARTNER_URL`, and
+`DRUPAL_LOGIN_LINK` for the administrative screens:
+
+```sh
+npm run test:e2e
+```
+
+CI runs lint, the jest suite and the build. The end-to-end suite is not run
+there, because it needs a live backend.

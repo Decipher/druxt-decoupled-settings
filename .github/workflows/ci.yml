@@ -2,10 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ develop ]
 
   pull_request:
-    branches: [ main ]
+    branches: [ develop ]
 
 jobs:
   build:
@@ -13,24 +13,29 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [14.x, 16.x]
-        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+        node-version: [16.x, 18.x]
+        # Node 16 matches the Nuxt 2 runtime. Node 18 covers current LTS users.
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
 
-    - run: npm i
-
-    - run: npm run build
+    - run: npm ci
 
     - run: npm run lint
 
-    - run: npm test --reporters=jest-junit --runInBand
+    - run: npm test -- --runInBand
+
+    - run: npm run build
 
     - name: Codecov
-      uses: codecov/codecov-action@v3.1.1
+      uses: codecov/codecov-action@v5
+      if: ${{ env.CODECOV_TOKEN != '' }}
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
