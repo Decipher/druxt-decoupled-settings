@@ -1,0 +1,14 @@
+{
+  "name": "@druxt-contrib/decoupled-settings-example",
+  "private": true,
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "start": "nuxt start"
+  },
+  "dependencies": {
+    "@druxt-contrib/decoupled-settings": "link:../..",
+    "druxt": "^0.19.0",
+    "nuxt": "^2.17.0"
+  }
+}

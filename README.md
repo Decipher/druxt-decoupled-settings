@@ -85,6 +85,11 @@ build) to render two differently branded sites from one backend.
   injects the consumer identity into the request, so `consumerId` is only
   needed for anonymous fetches.
 
+## Example
+
+[`example/`](example/) is a Nuxt app that builds twice from one codebase and
+renders as two different sites. Its README covers the Drupal side.
+
 ## Development
 
 ```sh
