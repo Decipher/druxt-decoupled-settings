@@ -89,7 +89,20 @@ build) to render two differently branded sites from one backend.
 
 ```sh
 npm install
-npm test
+npm test          # jest, with coverage thresholds
 npm run lint
 npm run build
 ```
+
+The Playwright suite in `test/e2e/` runs against a provisioned Drupal and two
+built frontends, and doubles as the screenshot generator, so a published
+screenshot is always taken after the assertions on it pass. It needs
+`DRUPAL_URL`, `FRONTEND_PUBLIC_URL` and `FRONTEND_PARTNER_URL`, and
+`DRUPAL_LOGIN_LINK` for the administrative screens:
+
+```sh
+npm run test:e2e
+```
+
+CI runs lint, the jest suite and the build. The end-to-end suite is not run
+there, because it needs a live backend.
