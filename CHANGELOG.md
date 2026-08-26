@@ -10,7 +10,7 @@ and this project adheres to
 
 ### Added
 - Build-time consumer identity for Druxt. The module reads
-  `/jsonapi/decoupled/settings` as a named consumer and bakes the resolved
+  `/jsonapi/decoupled/settings` as one consumer and bakes the resolved
   settings into `publicRuntimeConfig`, so one codebase builds as many
   differently branded sites.
 - Optional OAuth2 client credentials authentication, for settings that are
@@ -20,8 +20,9 @@ and this project adheres to
   active theme's favicon replaces the static one. `applyHead: false` opts
   out.
 - A scoped asset proxy at `/_decoupled/logo` and `/_decoupled/favicon`. Its
-  allowlist is exactly the files the settings name, so the backend needs no
-  public exposure for assets and nothing else is reachable through it.
+  allowlist is exactly the files the settings name, so nothing else is
+  reachable through it and the backend does not have to expose its assets
+  publicly.
 - A Playwright end-to-end suite that doubles as the screenshot generator,
   so every published screenshot is taken after assertions pass on the thing
   pictured.
@@ -29,6 +30,7 @@ and this project adheres to
 ### Known limitations
 - Settings are read at build time, so a settings change means a rebuild.
   That is the same contract as environment variables in a static build.
-- Each consumer needs its own `NUXT_BUILD_DIR`: the document head is baked
-  into the build, so a shared directory means last build wins.
+- Each consumer needs its own `buildDir`, mapped in `nuxt.config.js`, because
+  Nuxt does not read one from the environment. The document head is baked
+  into the build, so a shared directory means the last build wins.
 - Nuxt 2 only, matching Druxt.

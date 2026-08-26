@@ -10,9 +10,8 @@ the resolved settings into `publicRuntimeConfig`. The consumer's site name and
 slogan become the document title, and the active theme's resolved favicon
 replaces the static one.
 
-This is the app authenticating, not a user. [druxt-auth](https://github.com/druxt/druxt-auth)
-covers the user login flow; nothing covered the build-time flow before this
-module.
+This is the app authenticating, not a user.
+[druxt-auth](https://github.com/druxt/druxt-auth) covers the user login flow.
 
 ## Install
 
@@ -47,21 +46,28 @@ export default {
 
 The consumer's logo and favicon are served from the frontend's own origin at
 `/_decoupled/logo` and `/_decoupled/favicon`, by a server middleware whose
-allowlist is exactly the files the settings name. The backend needs no public
-exposure for assets, and nothing outside the allowlist is reachable - this is
-a proxy to named files, never to the backend. The baked settings are rewritten
-to these paths, so components can use `logo.url` as it is.
+allowlist is exactly the files the settings name. Nothing else is reachable
+through it, and the backend does not have to expose its assets publicly. The
+baked settings are rewritten to these paths, so components can use `logo.url`
+as it is.
 
 Anywhere in the app:
 
 ```js
 this.$config.decoupledSettings['system.site'].name
 this.$config.decoupledConsumer
+this.$config.decoupledBaseUrl
 ```
 
-Run the same code twice with different `DRUXT_CONSUMER_ID` values (and, in
-dev, different `NUXT_BUILD_DIR` values, since the head is baked into the
-build) to render two differently branded sites from one backend.
+Run the same code twice with different `DRUXT_CONSUMER_ID` values to render
+two differently branded sites from one backend. Give each consumer its own
+`buildDir` as well: the head is baked into the build, so a shared directory
+means the last build wins. Nuxt does not read a build directory from the
+environment, so map one yourself, as the example does:
+
+```js
+buildDir: process.env.NUXT_BUILD_DIR || '.nuxt',
+```
 
 ## Options
 
@@ -81,7 +87,7 @@ build) to render two differently branded sites from one backend.
   scope for authenticated ones.
 - [Consumers](https://www.drupal.org/project/consumers). With
   [Simple OAuth](https://www.drupal.org/project/simple_oauth), a
-  client_credentials token resolves the consumer by itself - Simple OAuth
+  client_credentials token resolves the consumer by itself. Simple OAuth
   injects the consumer identity into the request, so `consumerId` is only
   needed for anonymous fetches.
 
