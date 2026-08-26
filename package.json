@@ -2,7 +2,6 @@
   "name": "@druxt-contrib/decoupled-settings",
   "version": "0.1.0",
   "description": "Bakes Drupal Decoupled Settings into the Nuxt build, per consumer.",
-  "license": "MIT",
   "keywords": [
     "druxt",
     "module"
@@ -11,6 +10,7 @@
     "type": "git",
     "url": "https://github.com/druxt-contrib/decoupled-settings"
   },
+  "license": "MIT",
   "exports": {
     ".": {
       "require": "./dist/index.ssr.js",
@@ -27,7 +27,7 @@
     "build": "siroc build",
     "build:watch": "siroc build --watch",
     "changeset": "changeset",
-    "lint": "eslint --ext .js,.vue src",
+    "lint": "eslint --ext .js,.vue src test",
     "test": "jest",
     "test:e2e": "playwright test",
     "test:watch": "jest --watch"
