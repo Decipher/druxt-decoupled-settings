@@ -45,13 +45,15 @@ export default {
       return this.site.slogan
     },
 
-    // The module rewrites theme asset URLs to its own proxy, so this path
-    // is served by the frontend and the backend needs no public exposure.
+    // The module rewrites theme asset URLs to its own proxy, so this path is
+    // served by the frontend. The theme is the group carrying the assets, not
+    // the one whose name ends in ".settings": any other exposed object can
+    // end that way too.
     logo() {
-      const theme = Object.entries(this.settings)
-        .find(([group]) => group !== 'system.site' && group.endsWith('.settings'))
+      const theme = Object.values(this.settings)
+        .find((values) => values && values.logo && values.logo.url)
 
-      return theme ? (theme[1].logo || {}).url : undefined
+      return theme ? theme.logo.url : undefined
     },
   },
 }

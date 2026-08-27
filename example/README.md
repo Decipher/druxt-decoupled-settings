@@ -28,17 +28,24 @@ For an authenticated fetch instead, give the consumer a client secret and a
 ```sh
 npm install
 
-# One consumer. Both commands need the same NUXT_BUILD_DIR, and start
-# needs its own PORT: a variable prefix applies to one command only.
+# One consumer. Build and start need the same DRUXT_CONSUMER_ID and the same
+# NUXT_BUILD_DIR, and start needs its own PORT: a variable prefix applies to
+# one command only.
 export BASE_URL=http://localhost:8080
 DRUXT_CONSUMER_ID=public_frontend NUXT_BUILD_DIR=.nuxt-public npm run build
-NUXT_BUILD_DIR=.nuxt-public PORT=3000 npm start
+DRUXT_CONSUMER_ID=public_frontend NUXT_BUILD_DIR=.nuxt-public PORT=3000 npm start
 
 # The other, same code.
 DRUXT_CONSUMER_ID=partner_frontend NUXT_BUILD_DIR=.nuxt-partner npm run build
-NUXT_BUILD_DIR=.nuxt-partner PORT=3001 npm start
+DRUXT_CONSUMER_ID=partner_frontend NUXT_BUILD_DIR=.nuxt-partner PORT=3001 npm start
 ```
 
-Separate build directories matter: the settings are baked into the build, so
-each consumer needs its own. A settings change means a rebuild, exactly as it
-would with environment variables.
+Separate build directories matter: the document head is written into the
+build, so each consumer needs its own or the last build wins.
+
+`DRUXT_CONSUMER_ID` on the start command is not a typo. Nuxt 2 resolves
+`publicRuntimeConfig` when the server starts, so leaving it off there serves
+the global site name under the build's title.
+
+For a static build, `npm run generate` writes the theme's logo and favicon
+into `dist/_decoupled/`, so the same URLs work without a server.

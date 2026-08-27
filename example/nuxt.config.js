@@ -6,6 +6,7 @@ export default {
 
   modules: [
     '@druxt-contrib/decoupled-settings',
+    'druxt',
   ],
 
   druxt: {
@@ -16,5 +17,11 @@ export default {
     // Which consumer this build renders as. Everything else falls back to
     // the environment: OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_SCOPE.
     consumerId: process.env.DRUXT_CONSUMER_ID,
+  },
+
+  // Druxt 0.21 pulls consola, whose browser build ships as .mjs. Webpack 4
+  // cannot parse that without help.
+  build: {
+    transpile: ['consola'],
   },
 }
