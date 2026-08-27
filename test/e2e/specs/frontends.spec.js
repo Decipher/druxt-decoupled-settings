@@ -35,7 +35,7 @@ for (const site of cases) {
       // The logo is served by the frontend's own scoped proxy.
       const logo = page.locator('.site-branding__logo')
       await expect(logo).toBeVisible()
-      expect(await logo.getAttribute('src')).toBe('/_decoupled/logo')
+      expect(await logo.getAttribute('src')).toBe('/_decoupled/logo.svg')
 
       // Viewport shot, not full page: the branding header and the start of
       // the settings dump tell the story without a scroll of json.

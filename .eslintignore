@@ -1,0 +1,4 @@
+dist
+example/dist
+example/.nuxt*
+coverage

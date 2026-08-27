@@ -1,4 +1,4 @@
-import DruxtDecoupledSettingsModule, { applyToHead, assetProxy, collectAssets, fetchSettings, getToken, request } from '../src'
+import DruxtDecoupledSettingsModule, { applyToHead, assetExtension, assetProxy, carriesThemeAssets, collectAssets, download, fetchSettings, findThemeSettings, getToken, request, writeAssets } from '../src'
 
 const attributes = {
   consumer: 'partner_frontend',
@@ -118,6 +118,53 @@ describe('fetchSettings', () => {
     expect(attributes.consumer).toBeNull()
   })
 
+  test('warns when the consumer that answered is not the one asked for', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    const doRequest = jest.fn().mockResolvedValue({
+      status: 200,
+      body: JSON.stringify({ data: { attributes: { consumer: null, settings: {} } } }),
+    })
+
+    await fetchSettings({ baseUrl: 'http://b', consumerId: 'typo_frontend' }, doRequest)
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('typo_frontend'))
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('none, the global values'))
+    warn.mockRestore()
+  })
+
+  test('warns when a token resolves a different consumer than the header asked for', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    const doRequest = jest.fn()
+      .mockResolvedValueOnce({ status: 200, body: JSON.stringify({ access_token: 't' }) })
+      .mockResolvedValueOnce({
+        status: 200,
+        body: JSON.stringify({ data: { attributes: { consumer: 'partner_frontend', settings: {} } } }),
+      })
+
+    await fetchSettings({
+      baseUrl: 'http://b',
+      consumerId: 'public_frontend',
+      clientId: 'partner_frontend',
+      clientSecret: 'secret',
+    }, doRequest)
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('"partner_frontend"'))
+    warn.mockRestore()
+  })
+
+  test('says nothing when the consumer matches', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    const doRequest = jest.fn().mockResolvedValue({
+      status: 200,
+      body: JSON.stringify({ data: { attributes } }),
+    })
+
+    await fetchSettings({ baseUrl: 'http://b', consumerId: 'partner_frontend' }, doRequest)
+
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
   test('throws a pointed error on an access failure', async () => {
     const doRequest = jest.fn().mockResolvedValue({ status: 403, body: '' })
 
@@ -141,9 +188,14 @@ describe('request', () => {
     server.close()
   })
 
-  test('rejects when the host cannot be reached', async () => {
+  test('names the module when the URL is malformed', async () => {
+    await expect(request('not a url')).rejects.toThrow('[decoupled-settings] cannot request not a url')
+  })
+
+  test('names the module when the host cannot be reached', async () => {
     // Port 1 on loopback: nothing listens, so the socket errors at once.
-    await expect(request('http://127.0.0.1:1/nowhere')).rejects.toThrow()
+    await expect(request('http://127.0.0.1:1/nowhere'))
+      .rejects.toThrow('[decoupled-settings] request to http://127.0.0.1:1/nowhere failed')
   })
 })
 
@@ -159,12 +211,12 @@ describe('collectAssets', () => {
 
     const assets = collectAssets(settings, 'http://backend:8888')
 
-    expect(assets).toEqual({
-      logo: 'http://backend:8888/core/themes/olivero/logo.svg',
-      favicon: 'http://cdn.example.com/favicon.ico',
+    expect({ ...assets }).toEqual({
+      'logo.svg': 'http://backend:8888/core/themes/olivero/logo.svg',
+      'favicon.ico': 'http://cdn.example.com/favicon.ico',
     })
-    expect(settings['olivero.settings'].logo.url).toBe('/_decoupled/logo')
-    expect(settings['olivero.settings'].favicon.url).toBe('/_decoupled/favicon')
+    expect(settings['olivero.settings'].logo.url).toBe('/_decoupled/logo.svg')
+    expect(settings['olivero.settings'].favicon.url).toBe('/_decoupled/favicon.ico')
     expect(settings['system.site']).toEqual({ name: 'kept alone' })
   })
 
@@ -174,8 +226,8 @@ describe('collectAssets', () => {
       'claro.settings': { favicon: { url: '/claro.ico' } },
     }
     const assets = collectAssets(settings, 'https://backend.example.com')
-    expect(assets.favicon).toBe('https://backend.example.com/olivero.ico')
-    expect(settings['olivero.settings'].favicon.url).toBe('/_decoupled/favicon')
+    expect(assets['favicon.ico']).toBe('https://backend.example.com/olivero.ico')
+    expect(settings['olivero.settings'].favicon.url).toBe('/_decoupled/favicon.ico')
     expect(settings['claro.settings'].favicon.url).toBe('https://backend.example.com/claro.ico')
   })
 
@@ -185,12 +237,59 @@ describe('collectAssets', () => {
     }
     const assets = collectAssets(settings, 'https://backend.example.com')
 
-    expect(assets.logo).toBe('https://cdn.example.com/logo.svg')
-    expect(settings['olivero.settings'].logo.url).toBe('/_decoupled/logo')
+    expect(assets['logo.svg']).toBe('https://cdn.example.com/logo.svg')
+    expect(settings['olivero.settings'].logo.url).toBe('/_decoupled/logo.svg')
   })
 
   test('collects nothing without theme assets', () => {
-    expect(collectAssets({ 'system.site': { name: 'x' } }, 'http://b')).toEqual({})
+    expect({ ...collectAssets({ 'system.site': { name: 'x' } }, 'http://b') }).toEqual({})
+  })
+})
+
+describe('theme detection', () => {
+  // An exposed object whose name ends in ".settings" won a name match and
+  // took the favicon with it, because the backend appends theme settings
+  // after every administrator-chosen object.
+  test('finds the theme by the assets it carries, not by its name', () => {
+    const settings = {
+      'system.site': { name: 'Site' },
+      'user.settings': { register: 'admin_only' },
+      'olivero.settings': { favicon: { url: '/olivero.ico' }, logo: { url: '/olivero.svg' } },
+    }
+
+    const assets = collectAssets(settings, 'http://backend')
+
+    expect(assets['favicon.ico']).toBe('http://backend/olivero.ico')
+    expect(settings['user.settings'].register).toBe('admin_only')
+    expect(findThemeSettings(settings).favicon.url).toBe('/_decoupled/favicon.ico')
+  })
+
+  test('is true only for a group holding a resolved asset URL', () => {
+    expect(carriesThemeAssets({ logo: { url: '/logo.svg' } })).toBe(true)
+    expect(carriesThemeAssets({ favicon: { url: '/favicon.ico' } })).toBe(true)
+    // A theme with the feature switched off has the key and no URL.
+    expect(carriesThemeAssets({ logo: { path: '', use_default: true } })).toBe(false)
+    expect(carriesThemeAssets({ register: 'admin_only' })).toBe(false)
+    expect(carriesThemeAssets(undefined)).toBe(false)
+  })
+
+  test('never mistakes system.site for the theme, and copes with neither', () => {
+    expect(findThemeSettings({ 'system.site': { logo: { url: '/site.svg' } } })).toEqual({})
+    expect(findThemeSettings({ 'system.site': { name: 'x' } })).toEqual({})
+  })
+
+  test('reads the extension, query string and fragment removed', () => {
+    expect(assetExtension('http://b/logo.SVG?itok=abc')).toBe('.svg')
+    expect(assetExtension('http://b/favicon.ico#x')).toBe('.ico')
+    expect(assetExtension('http://b/brand')).toBe('')
+  })
+
+  test('names an extensionless asset without one', () => {
+    const settings = { 'olivero.settings': { logo: { url: '/styles/brand' } } }
+    const assets = collectAssets(settings, 'http://backend')
+
+    expect(assets.logo).toBe('http://backend/styles/brand')
+    expect(settings['olivero.settings'].logo.url).toBe('/_decoupled/logo')
   })
 })
 
@@ -376,11 +475,108 @@ describe('assetProxy', () => {
   test('refuses everything not on the allowlist', () => {
     const handler = assetProxy({ logo: 'http://backend/logo.svg' })
 
-    for (const url of ['/favicon', '/logo/../settings.php', '/', '/anything?x=1']) {
+    for (const url of [
+      '/favicon', '/logo/../settings.php', '/', '/anything?x=1',
+      // Inherited members of a plain object are truthy and are not strings,
+      // so these reached startsWith() and threw a 500.
+      '/constructor', '/__proto__', '/toString', '/valueOf', '/hasOwnProperty',
+    ]) {
       const res = respond()
       handler({ url }, res)
       expect(res.statusCode).toBe(404)
     }
+  })
+})
+
+describe('download', () => {
+  const serve = (handler) => new Promise((resolve) => {
+    const httpModule = require('http')
+    const server = httpModule.createServer(handler)
+    server.listen(0, () => resolve({ server, port: server.address().port }))
+  })
+
+  test('returns the bytes, not a string', async () => {
+    const bytes = Buffer.from([0x00, 0x00, 0x01, 0x00, 0xff, 0xfe])
+    const { server, port } = await serve((req, res) => {
+      res.setHeader('Content-Type', 'image/vnd.microsoft.icon')
+      res.end(bytes)
+    })
+
+    const got = await download(`http://127.0.0.1:${port}/favicon.ico`)
+    server.close()
+
+    expect(Buffer.isBuffer(got)).toBe(true)
+    expect(got.equals(bytes)).toBe(true)
+  })
+
+  test('rejects on a non-200, naming the URL', async () => {
+    const { server, port } = await serve((req, res) => {
+      res.statusCode = 404
+      res.end('gone')
+    })
+
+    await expect(download(`http://127.0.0.1:${port}/logo.svg`))
+      .rejects.toThrow(`HTTP 404 for http://127.0.0.1:${port}/logo.svg`)
+    server.close()
+  })
+
+  test('rejects when the host cannot be reached', async () => {
+    await expect(download('http://127.0.0.1:1/logo.svg'))
+      .rejects.toThrow('[decoupled-settings] asset fetch failed for http://127.0.0.1:1/logo.svg')
+  })
+
+  test('gives up on a backend that accepts and never answers', async () => {
+    const { server, port } = await serve(() => {})
+    await expect(download(`http://127.0.0.1:${port}/logo.svg`, { timeout: 60 }))
+      .rejects.toThrow('[decoupled-settings] asset fetch failed')
+    server.close()
+  })
+
+  test('rejects when the backend dies part way through the bytes', async () => {
+    const { server, port } = await serve((req, res) => {
+      res.setHeader('Content-Length', '1000')
+      res.write('half')
+      res.socket.destroy()
+    })
+
+    await expect(download(`http://127.0.0.1:${port}/logo.svg`)).rejects.toThrow()
+    server.close()
+  })
+
+  test('chooses https for an https URL', async () => {
+    // Nothing listens, so the rejection is the proof it used the https agent
+    // rather than falling back to plain http.
+    await expect(download('https://127.0.0.1:1/logo.svg')).rejects.toThrow('asset fetch failed')
+  })
+})
+
+describe('writeAssets', () => {
+  test('writes each asset under _decoupled, keeping its name', async () => {
+    const writeFile = jest.fn().mockResolvedValue()
+    const mkdir = jest.fn().mockResolvedValue()
+    const doDownload = jest.fn().mockResolvedValue(Buffer.from('bytes'))
+
+    const written = await writeAssets(
+      { 'logo.svg': 'http://backend/logo.svg', 'favicon.ico': 'http://backend/favicon.ico' },
+      '/out/dist',
+      { writeFile, mkdir, download: doDownload }
+    )
+
+    expect(mkdir).toHaveBeenCalledWith('/out/dist/_decoupled', { recursive: true })
+    expect(writeFile).toHaveBeenCalledWith('/out/dist/_decoupled/logo.svg', Buffer.from('bytes'))
+    expect(writeFile).toHaveBeenCalledWith('/out/dist/_decoupled/favicon.ico', Buffer.from('bytes'))
+    expect(written).toEqual(['logo.svg', 'favicon.ico'])
+  })
+
+  test('surfaces a failed download rather than writing a truncated file', async () => {
+    const writeFile = jest.fn().mockResolvedValue()
+    const mkdir = jest.fn().mockResolvedValue()
+    const doDownload = jest.fn().mockRejectedValue(new Error('asset fetch failed: HTTP 403'))
+
+    await expect(writeAssets({ 'logo.svg': 'http://backend/logo.svg' }, '/out', {
+      writeFile, mkdir, download: doDownload,
+    })).rejects.toThrow('HTTP 403')
+    expect(writeFile).not.toHaveBeenCalled()
   })
 })
 
@@ -431,6 +627,7 @@ describe('DruxtDecoupledSettingsModule', () => {
 
     const mock = {
       addServerMiddleware: jest.fn(),
+      nuxt: { hook: jest.fn() },
       options: {
         druxt: { baseUrl: `http://127.0.0.1:${port}` },
         head: {},
@@ -450,7 +647,105 @@ describe('DruxtDecoupledSettingsModule', () => {
     )
     expect(
       mock.options.publicRuntimeConfig.decoupledSettings['olivero.settings'].favicon.url
-    ).toBe('/_decoupled/favicon')
+    ).toBe('/_decoupled/favicon.ico')
+  })
+
+  test('the generate hook writes the assets the proxy would have served', async () => {
+    const httpModule = require('http')
+    const os = require('os')
+    const nodeFs = require('fs')
+    const nodePath = require('path')
+
+    const server = httpModule.createServer((req, res) => {
+      if (req.url === '/jsonapi/decoupled/settings') {
+        res.setHeader('Content-Type', 'application/vnd.api+json')
+        res.end(JSON.stringify({
+          data: {
+            attributes: {
+              consumer: 'partner_frontend',
+              settings: {
+                'system.site': { name: 'Partner Portal' },
+                'olivero.settings': { favicon: { url: '/favicon.ico' } },
+              },
+            },
+          },
+        }))
+        return
+      }
+      res.setHeader('Content-Type', 'image/vnd.microsoft.icon')
+      res.end(Buffer.from([0x00, 0x00, 0x01, 0x00]))
+    })
+    await new Promise((resolve) => server.listen(0, resolve))
+    const { port } = server.address()
+
+    let generateHook
+    const mock = {
+      addServerMiddleware: jest.fn(),
+      nuxt: { hook: jest.fn((name, handler) => { generateHook = handler }) },
+      options: { head: {} },
+    }
+    await DruxtDecoupledSettingsModule.call(mock, {
+      baseUrl: `http://127.0.0.1:${port}`,
+      consumerId: 'partner_frontend',
+    })
+
+    const distPath = nodeFs.mkdtempSync(nodePath.join(os.tmpdir(), 'dds-generate-'))
+    const info = jest.spyOn(console, 'info').mockImplementation(() => {})
+    await generateHook({ distPath })
+    info.mockRestore()
+    server.close()
+
+    const written = nodePath.join(distPath, '_decoupled', 'favicon.ico')
+    expect(nodeFs.existsSync(written)).toBe(true)
+    expect(nodeFs.readFileSync(written).length).toBe(4)
+    // The same path the settings were rewritten to, so one URL is true for a
+    // served build and a generated one.
+    expect(
+      mock.options.publicRuntimeConfig.decoupledSettings['olivero.settings'].favicon.url
+    ).toBe('/_decoupled/favicon.ico')
+    nodeFs.rmSync(distPath, { recursive: true, force: true })
+  })
+
+  test('falls back to the configured generate directory', async () => {
+    const httpModule = require('http')
+    const os = require('os')
+    const nodeFs = require('fs')
+    const nodePath = require('path')
+
+    const server = httpModule.createServer((req, res) => {
+      if (req.url === '/jsonapi/decoupled/settings') {
+        res.end(JSON.stringify({
+          data: {
+            attributes: {
+              consumer: null,
+              settings: { 'olivero.settings': { logo: { url: '/logo.svg' } } },
+            },
+          },
+        }))
+        return
+      }
+      res.end('<svg/>')
+    })
+    await new Promise((resolve) => server.listen(0, resolve))
+
+    let generateHook
+    const mock = {
+      addServerMiddleware: jest.fn(),
+      nuxt: { hook: jest.fn((name, handler) => { generateHook = handler }) },
+      options: { head: {} },
+    }
+    await DruxtDecoupledSettingsModule.call(mock, { baseUrl: `http://127.0.0.1:${server.address().port}` })
+
+    const dir = nodeFs.mkdtempSync(nodePath.join(os.tmpdir(), 'dds-fallback-'))
+    const info = jest.spyOn(console, 'info').mockImplementation(() => {})
+    // A generator with no distPath property: the option is the source of
+    // truth that Generator itself reads in its constructor.
+    await generateHook({ nuxt: { options: { generate: { dir } } } })
+    info.mockRestore()
+    server.close()
+
+    expect(nodeFs.existsSync(nodePath.join(dir, '_decoupled', 'logo.svg'))).toBe(true)
+    nodeFs.rmSync(dir, { recursive: true, force: true })
   })
 
   test('leaves the head alone and skips the proxy when nothing needs them', async () => {
@@ -467,6 +762,7 @@ describe('DruxtDecoupledSettingsModule', () => {
 
     const mock = {
       addServerMiddleware: jest.fn(),
+      nuxt: { hook: jest.fn() },
       options: { head: { title: 'Set by the app' } },
     }
     await DruxtDecoupledSettingsModule.call(mock, {

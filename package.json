@@ -15,8 +15,7 @@
     ".": {
       "require": "./dist/index.ssr.js",
       "import": "./dist/index.esm.js"
-    },
-    "./components/*": "./dist/components/*"
+    }
   },
   "main": "dist/index.ssr.js",
   "module": "dist/index.esm.js",
@@ -27,7 +26,7 @@
     "build": "siroc build",
     "build:watch": "siroc build --watch",
     "changeset": "changeset",
-    "lint": "eslint --ext .js,.vue src test",
+    "lint": "eslint --ext .js,.vue src test example",
     "test": "jest",
     "test:e2e": "playwright test",
     "test:watch": "jest --watch"
@@ -47,6 +46,17 @@
     "siroc": "0.16.0",
     "vue-jest": "3.0.7",
     "vue-template-compiler": "2.7.14"
+  },
+  "peerDependencies": {
+    "nuxt": "^2.17.0"
+  },
+  "peerDependenciesMeta": {
+    "nuxt": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=16"
   },
   "publishConfig": {
     "access": "public"
