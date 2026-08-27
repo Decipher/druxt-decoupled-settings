@@ -44,12 +44,16 @@ export default {
 
 ## Asset proxy
 
-The consumer's logo and favicon are served from the frontend's own origin at
-`/_decoupled/logo` and `/_decoupled/favicon`, by a server middleware whose
-allowlist is exactly the files the settings name. Nothing else is reachable
-through it, and the backend does not have to expose its assets publicly. The
-baked settings are rewritten to these paths, so components can use `logo.url`
-as it is.
+The consumer's logo and favicon are served from the frontend's own origin
+under `/_decoupled/`, keeping the source file extension, by a server
+middleware whose allowlist is exactly the files the settings name. Nothing
+else is reachable through it, and the backend does not have to expose its
+assets publicly. The settings are rewritten to these paths, so components can
+use `logo.url` as it is.
+
+`nuxt generate` has no server to run that middleware, so the module writes the
+same files into the generated output at the same paths. One URL is true for a
+served build and a generated one.
 
 Anywhere in the app:
 
@@ -59,15 +63,51 @@ this.$config.decoupledConsumer
 this.$config.decoupledBaseUrl
 ```
 
+The theme's group is whichever one holds `logo.url` or `favicon.url`, not the
+one whose name ends in `.settings`: the backend appends theme settings after
+every object an administrator exposed, and `user.settings` ends that way too.
+
 Run the same code twice with different `DRUXT_CONSUMER_ID` values to render
 two differently branded sites from one backend. Give each consumer its own
-`buildDir` as well: the head is baked into the build, so a shared directory
-means the last build wins. Nuxt does not read a build directory from the
-environment, so map one yourself, as the example does:
+`buildDir` as well. Nuxt does not read a build directory from the environment,
+so map one yourself, as the example does:
 
 ```js
 buildDir: process.env.NUXT_BUILD_DIR || '.nuxt',
 ```
+
+### Set the consumer on `start` as well as on `build`
+
+`publicRuntimeConfig` is Nuxt 2 runtime configuration: it resolves when the
+server starts, not when the build runs. This module is a Nuxt module, so it
+runs on `nuxt start` too. Pass the same environment to both commands, or the
+served page carries the build's title over the global settings:
+
+```sh
+DRUXT_CONSUMER_ID=public_frontend NUXT_BUILD_DIR=.nuxt-public npm run build
+DRUXT_CONSUMER_ID=public_frontend NUXT_BUILD_DIR=.nuxt-public PORT=3000 npm start
+```
+
+The runtime config and the document head go stale differently:
+
+| | Refreshes on | Consequence |
+|---|---|---|
+| `publicRuntimeConfig` | every `start` | the backend has to be reachable at start, or the server does not come up |
+| document head | every `build` | a restart alone leaves the old title in place |
+
+The module warns when the consumer that answered is not the one asked for,
+which covers a typo in `DRUXT_CONSUMER_ID`, where Drupal answers 200 with the
+global values, and an OAuth token whose consumer is not the one in the header,
+where the token wins.
+
+### Everything exposed becomes public
+
+`publicRuntimeConfig` is serialised into the page, so every key the endpoint
+returns is readable in the page source. The exposure list on the Drupal side
+is the whole boundary. Decoupled Settings bounds each object by its typed
+config schema and excludes `system.site:mail` and
+`system.site:mail_notification` out of the box, but check the list before
+pointing this at a production backend.
 
 ## Options
 
