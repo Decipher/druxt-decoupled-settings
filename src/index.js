@@ -1,5 +1,7 @@
 import http from 'http'
 import https from 'https'
+import { promises as fs } from 'fs'
+import path from 'path'
 
 /**
  * Minimal HTTP client. Node 16, the version Nuxt 2 projects run on, has no
@@ -8,12 +10,25 @@ import https from 'https'
 export const request = (url, { method = 'GET', headers = {}, body = null } = {}) =>
   new Promise((resolve, reject) => {
     const lib = url.startsWith('https:') ? https : http
-    const req = lib.request(url, { method, headers }, (res) => {
-      let data = ''
-      res.on('data', (chunk) => { data += chunk })
-      res.on('end', () => resolve({ status: res.statusCode, body: data }))
-    })
-    req.on('error', reject)
+    let req
+    try {
+      req = lib.request(url, { method, headers }, (res) => {
+        let data = ''
+        res.on('data', (chunk) => { data += chunk })
+        res.on('end', () => resolve({ status: res.statusCode, body: data }))
+      })
+    }
+    catch (error) {
+      // A malformed baseUrl throws here rather than emitting. Without the
+      // prefix a build dies on a bare "Invalid URL" that names no module.
+      reject(new Error(`[decoupled-settings] cannot request ${url}: ${error.message}`))
+      return
+    }
+    // Same reason: an unreachable backend is the first thing anyone hits, and
+    // "connect ECONNREFUSED" alone does not say which module wanted it.
+    req.on('error', (error) => reject(
+      new Error(`[decoupled-settings] request to ${url} failed: ${error.message}`)
+    ))
     if (body) req.write(body)
     req.end()
   })
@@ -63,7 +78,21 @@ export const fetchSettings = async (options, doRequest = request) => {
         'Check the "read decoupled settings" permission and the consumer credentials.'
     )
   }
-  return JSON.parse(response.body).data.attributes
+  const attributes = JSON.parse(response.body).data.attributes
+
+  // Drupal answers 200 with the global values for a consumer it cannot find,
+  // and an OAuth token names its own consumer whatever the header says. Both
+  // are silent, and both build the wrong site.
+  if (options.consumerId && attributes.consumer !== options.consumerId) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[decoupled-settings] asked for consumer "${options.consumerId}" and got ` +
+        `"${attributes.consumer || 'none, the global values'}". ` +
+        'Check the client_id, or the credentials if this build authenticates.'
+    )
+  }
+
+  return attributes
 }
 
 /**
@@ -76,7 +105,10 @@ export const fetchSettings = async (options, doRequest = request) => {
  */
 export const assetProxy = (assets, { timeout = 10000 } = {}) => (req, res) => {
   const key = (req.url || '').replace(/^\/+/, '').replace(/[?#].*$/, '')
-  const target = assets[key]
+  // Own properties only. A plain object answers to "constructor" and
+  // "__proto__" with something truthy that is not a string, which reached
+  // startsWith() below and threw a 500 on an unauthenticated path.
+  const target = Object.prototype.hasOwnProperty.call(assets, key) ? assets[key] : undefined
   if (!target) {
     res.statusCode = 404
     res.end('Not found')
@@ -119,25 +151,109 @@ export const assetProxy = (assets, { timeout = 10000 } = {}) => (req, res) => {
  * proxy serves.
  */
 export const collectAssets = (settings, baseUrl) => {
-  const assets = {}
+  const assets = Object.create(null)
+  const claimed = new Set()
   for (const [group, values] of Object.entries(settings)) {
-    if (group === 'system.site' || !group.endsWith('.settings')) continue
+    if (group === 'system.site' || !carriesThemeAssets(values)) continue
     for (const name of ['logo', 'favicon']) {
       const item = values[name]
       if (!item || !item.url) continue
-      // The proxy serves one theme: the first settings group, which is the
-      // same group applyToHead reads. A later group keeps a direct backend
-      // URL, so its data stays truthful instead of pointing at the wrong
-      // file.
-      if (assets[name]) {
-        item.url = item.url.startsWith('http') ? item.url : `${baseUrl}${item.url}`
+      const absolute = item.url.startsWith('http') ? item.url : `${baseUrl}${item.url}`
+      // The proxy serves one theme: the first group carrying assets, which is
+      // the same group applyToHead reads. A later group keeps a direct
+      // backend URL, so its data stays truthful.
+      if (claimed.has(name)) {
+        item.url = absolute
         continue
       }
-      assets[name] = item.url.startsWith('http') ? item.url : `${baseUrl}${item.url}`
-      item.url = `/_decoupled/${name}`
+      claimed.add(name)
+      // Keep the source extension. A static build serves these as files, and
+      // a host reads the content type off the name: an <img> pointed at an
+      // extensionless SVG does not render.
+      const key = `${name}${assetExtension(absolute)}`
+      assets[key] = absolute
+      item.url = `/_decoupled/${key}`
     }
   }
   return assets
+}
+
+/**
+ * Reads the file extension off an asset URL, query string and all removed.
+ */
+export const assetExtension = (url) => {
+  const clean = url.split(/[?#]/)[0]
+  const match = /\.[a-z0-9]+$/i.exec(clean)
+
+  return match ? match[0].toLowerCase() : ''
+}
+
+/**
+ * Tests whether a settings group holds the theme's assets.
+ *
+ * Named for what it carries, not for what it is called. The backend appends
+ * theme settings after every administrator-chosen object, so any other
+ * exposed object whose name ends in ".settings", such as user.settings, won
+ * a name match and took the favicon with it.
+ */
+export const carriesThemeAssets = (values) =>
+  Boolean(values && ((values.logo && values.logo.url) || (values.favicon && values.favicon.url)))
+
+/**
+ * Finds the settings group holding the theme's assets.
+ */
+export const findThemeSettings = (settings) => {
+  const found = Object.entries(settings)
+    .find(([group, values]) => group !== 'system.site' && carriesThemeAssets(values))
+
+  return found ? found[1] : {}
+}
+
+/**
+ * Downloads one asset as bytes.
+ *
+ * The request helper above accumulates a string, which is right for JSON and
+ * wrong for an .ico. This keeps the chunks as buffers.
+ */
+export const download = (url, { timeout = 10000 } = {}) =>
+  new Promise((resolve, reject) => {
+    const lib = url.startsWith('https:') ? https : http
+    const req = lib.get(url, { agent: false, timeout }, (res) => {
+      if (res.statusCode !== 200) {
+        res.resume()
+        reject(new Error(`[decoupled-settings] asset fetch failed: HTTP ${res.statusCode} for ${url}`))
+        return
+      }
+      const chunks = []
+      res.on('data', (chunk) => chunks.push(chunk))
+      res.on('end', () => resolve(Buffer.concat(chunks)))
+    })
+    req.on('error', (error) => reject(
+      new Error(`[decoupled-settings] asset fetch failed for ${url}: ${error.message}`)
+    ))
+    req.on('timeout', () => req.destroy(new Error('upstream timeout')))
+  })
+
+/**
+ * Writes the proxied assets into a generated site.
+ *
+ * A static build has no server middleware, so the paths the settings were
+ * rewritten to would 404 and the logo and favicon would break with a green
+ * build and no warning. Writing the files at those paths keeps one set of
+ * URLs true for both targets.
+ */
+export const writeAssets = async (assets, distPath, deps = {}) => {
+  const write = deps.writeFile || fs.writeFile
+  const makeDir = deps.mkdir || fs.mkdir
+  const fetchAsset = deps.download || download
+
+  const dir = path.join(distPath, '_decoupled')
+  await makeDir(dir, { recursive: true })
+  for (const [name, target] of Object.entries(assets)) {
+    await write(path.join(dir, name), await fetchAsset(target))
+  }
+
+  return Object.keys(assets)
 }
 
 /**
@@ -149,9 +265,7 @@ export const collectAssets = (settings, baseUrl) => {
  */
 export const applyToHead = (head = {}, attributes, baseUrl = '') => {
   const site = attributes.settings['system.site'] || {}
-  const theme = Object.entries(attributes.settings)
-    .find(([group]) => group !== 'system.site' && group.endsWith('.settings'))
-  const themeSettings = theme ? theme[1] : {}
+  const themeSettings = findThemeSettings(attributes.settings)
 
   if (site.name) {
     // Druxt router sets a per-page title from Drupal; the template brands
@@ -205,6 +319,15 @@ const DruxtDecoupledSettingsModule = async function (moduleOptions = {}) {
   const assets = collectAssets(attributes.settings, options.baseUrl)
   if (Object.keys(assets).length) {
     this.addServerMiddleware({ path: '/_decoupled', handler: assetProxy(assets) })
+    // nuxt generate throws the server away, so the same files have to exist
+    // on disk under the same paths.
+    if (this.nuxt && typeof this.nuxt.hook === 'function') {
+      this.nuxt.hook('generate:done', async (generator) => {
+        const written = await writeAssets(assets, generator.distPath)
+        // eslint-disable-next-line no-console
+        console.info(`[decoupled-settings] wrote static assets: ${written.join(', ')}`)
+      })
+    }
   }
 
   this.options.publicRuntimeConfig = this.options.publicRuntimeConfig || {}
