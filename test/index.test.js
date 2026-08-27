@@ -706,6 +706,48 @@ describe('DruxtDecoupledSettingsModule', () => {
     nodeFs.rmSync(distPath, { recursive: true, force: true })
   })
 
+  test('falls back to the configured generate directory', async () => {
+    const httpModule = require('http')
+    const os = require('os')
+    const nodeFs = require('fs')
+    const nodePath = require('path')
+
+    const server = httpModule.createServer((req, res) => {
+      if (req.url === '/jsonapi/decoupled/settings') {
+        res.end(JSON.stringify({
+          data: {
+            attributes: {
+              consumer: null,
+              settings: { 'olivero.settings': { logo: { url: '/logo.svg' } } },
+            },
+          },
+        }))
+        return
+      }
+      res.end('<svg/>')
+    })
+    await new Promise((resolve) => server.listen(0, resolve))
+
+    let generateHook
+    const mock = {
+      addServerMiddleware: jest.fn(),
+      nuxt: { hook: jest.fn((name, handler) => { generateHook = handler }) },
+      options: { head: {} },
+    }
+    await DruxtDecoupledSettingsModule.call(mock, { baseUrl: `http://127.0.0.1:${server.address().port}` })
+
+    const dir = nodeFs.mkdtempSync(nodePath.join(os.tmpdir(), 'dds-fallback-'))
+    const info = jest.spyOn(console, 'info').mockImplementation(() => {})
+    // A generator with no distPath property: the option is the source of
+    // truth that Generator itself reads in its constructor.
+    await generateHook({ nuxt: { options: { generate: { dir } } } })
+    info.mockRestore()
+    server.close()
+
+    expect(nodeFs.existsSync(nodePath.join(dir, '_decoupled', 'logo.svg'))).toBe(true)
+    nodeFs.rmSync(dir, { recursive: true, force: true })
+  })
+
   test('leaves the head alone and skips the proxy when nothing needs them', async () => {
     const httpModule = require('http')
     const server = httpModule.createServer((req, res) => {

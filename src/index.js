@@ -323,7 +323,10 @@ const DruxtDecoupledSettingsModule = async function (moduleOptions = {}) {
     // on disk under the same paths.
     if (this.nuxt && typeof this.nuxt.hook === 'function') {
       this.nuxt.hook('generate:done', async (generator) => {
-        const written = await writeAssets(assets, generator.distPath)
+        // Generator.distPath is options.generate.dir, set in its constructor.
+        // Read the option as a fallback rather than trusting one property.
+        const distPath = generator.distPath || generator.nuxt.options.generate.dir
+        const written = await writeAssets(assets, distPath)
         // eslint-disable-next-line no-console
         console.info(`[decoupled-settings] wrote static assets: ${written.join(', ')}`)
       })

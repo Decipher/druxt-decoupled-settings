@@ -50,10 +50,13 @@ export default {
     // the one whose name ends in ".settings": any other exposed object can
     // end that way too.
     logo() {
-      const theme = Object.values(this.settings)
-        .find((values) => values && values.logo && values.logo.url)
+      // Skip system.site the way the module does: if the site object ever
+      // exposes a logo, it is not the theme's and the proxy never collected
+      // it, so a static build would point at the backend.
+      const theme = Object.entries(this.settings)
+        .find(([group, values]) => group !== 'system.site' && values && values.logo && values.logo.url)
 
-      return theme ? theme.logo.url : undefined
+      return theme ? theme[1].logo.url : undefined
     },
   },
 }
